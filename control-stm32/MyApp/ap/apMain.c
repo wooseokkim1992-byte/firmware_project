@@ -3,6 +3,7 @@
 
 #include "hw/sjh_driver/mpu6050.h"
 #include "hw/sjh_driver/vibration.h"
+#include "hw/sjh_driver/vibration_state.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -18,10 +19,9 @@
  *
  * 1.1 MPU6050 센서 제어
  * 1.2 진동 데이터 처리
- *
- *
+ * 
  * 데이터 흐름
- *
+ * 
  * MPU6050
  *     ↓
  * accel_x / accel_y / accel_z
@@ -65,6 +65,66 @@ static mpu6050_data_t mpu_data = {0};
  * 등을 확인할 수 있다.
  */
 static vibration_data_t vibration_data = {0};
+
+/*
+ * 진동 상태 판정 결과
+ *
+ * Live Watch에서
+ *
+ * vibration_state_data.current_state
+ * vibration_state_data.candidate_state
+ * vibration_state_data.candidate_count
+ * vibration_state_data.change_count
+ *
+ * 등을 확인할 수 있다.
+ */
+
+
+/*
+ * ============================================================
+ * 진동 상태 판정 임시 테스트 설정
+ * ============================================================
+ *
+ * 아래 Threshold 값은 상태 판정 로직 검증용 임시값이다.
+ *
+ * 실제 FAN / 발전기 구조의 최종 Threshold가 아니다.
+ *
+ * 실제 회전체 조립 후
+ * NORMAL / WARNING / DANGER 상태의 RMS 데이터를
+ * 반복 측정한 뒤 반드시 다시 설정한다.
+ *
+ * 현재 테스트값:
+ * WARNING : 0.005 g
+ * DANGER  : 0.010 g
+ *
+ * 손으로 센서를 조금만 움직여도 DANGER가 될 수 있음.
+ * ============================================================
+ */
+static vibration_state_config_t vibration_state_config =
+{
+    .warning_threshold = 0.005f,
+    .danger_threshold = 0.010f,
+    .hysteresis = 0.001f,
+    .persistence_count = 3U
+};
+
+
+
+
+static vibration_state_data_t vibration_state_data = {0};
+
+
+/*
+ * 새로운 64 Sample 진동 Window가
+ * 만들어졌는지 확인.
+ */
+static bool vibration_updated = false;
+
+
+/*
+ * 가장 최근 상태 변경 여부.
+ */
+static bool vibration_state_changed = false;
 
 
 /*
@@ -160,7 +220,29 @@ void apInit(void)
      */
     vibration_init();
 
+    /*
+    * 진동 상태 판정 모듈 초기화
+    */
+    vibration_state_init();
 
+        /*
+    * 진동 상태 판정 Test 설정 적용
+    */
+    vibration_state_set_config(
+        &vibration_state_config
+    );
+
+    vibration_state_get_data(
+        &vibration_state_data
+    );
+
+
+    /*
+    * 초기 상태를 Application 변수에 복사
+    */
+    vibration_state_get_data(
+        &vibration_state_data
+    );
     /*
      * MPU6050 초기화 결과 출력
      */
@@ -303,20 +385,51 @@ void apMain(void)
                      * 반환값 true는
                      * 64 Sample Window 결과가 새로 만들어졌다는 뜻.
                      */
-                    vibration_update(
-                        mpu_data.accel_x,
-                        mpu_data.accel_y,
-                        mpu_data.accel_z
+                    /*
+                    * 진동 데이터 처리.
+                    *
+                    * true:
+                    * 새로운 64 Sample Window 결과가 만들어짐
+                    *
+                    * false:
+                    * 아직 Window 수집 중
+                    */
+                    vibration_updated =
+                        vibration_update(
+                            mpu_data.accel_x,
+                            mpu_data.accel_y,
+                            mpu_data.accel_z
+                        );
+
+
+                    /*
+                    * 최신 진동 처리 결과 복사
+                    */
+                    vibration_get_data(
+                        &vibration_data
                     );
 
 
                     /*
-                     * Live Watch / 관제에서 사용할 수 있도록
-                     * 최신 결과를 Application 변수로 복사한다.
-                     */
-                    vibration_get_data(
-                        &vibration_data
-                    );
+                    * ========================================================
+                    * 1.3 진동 상태 판정
+                    * ========================================================
+                    *
+                    * 새로운 RMS 결과가 만들어졌을 때만
+                    * 상태 판정을 한 번 실행한다.
+                    */
+                    if (vibration_updated)
+                    {
+                        vibration_state_changed =
+                            vibration_state_update(
+                                vibration_data.vibration_value
+                            );
+
+
+                        vibration_state_get_data(
+                            &vibration_state_data
+                        );
+                    }
                 }
 
                 /*
@@ -430,6 +543,12 @@ void apMain(void)
                     vibration_data.vibration_mean,
                     vibration_data.vibration_rms,
                     vibration_data.vibration_peak
+                );
+                printf(
+                    "[VIBRATION STATE] %s\r\n",
+                    vibration_state_get_name(
+                        vibration_state_data.current_state
+                    )
                 );
             }
 
