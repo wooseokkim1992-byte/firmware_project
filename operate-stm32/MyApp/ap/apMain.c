@@ -37,9 +37,9 @@ void apInit(void) {
   dht11Init();
   if (lcd1602_init()) {
     lcd1602_cursor(0, 0);
-    lcd1602_print("LCD1602 READY   ");
+    lcd1602_print_initial("LCD1602 READY   ");
     lcd1602_cursor(1, 0);
-    lcd1602_print("I2C3: 100kHz    ");
+    lcd1602_print_initial("I2C3: 100kHz    ");
   }
   mpu6050Init();
   // ssd1306Init();
@@ -69,10 +69,12 @@ void apMain(void) {
         ssd1306UpdateDMA();
       }
     }
-    if (current_tick - tick_100 >= 100) {
+    if (current_tick - tick_100 >= 500) {
       tick_100 = current_tick;
+      lcd1602_clear();
       lcd1602_cursor(0, 0);
       lcd1602_print("hellow");
+      lcd1602_send_dma_data();
     }
   }
 }

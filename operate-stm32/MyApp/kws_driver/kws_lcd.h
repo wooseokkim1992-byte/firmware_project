@@ -24,3 +24,5 @@ void lcd1602_cursor(uint8_t row, uint8_t col);
 void lcd1602_print(const char *str);
 void lcd1602_printf(const char *fmt, ...);
 void lcd1602_backlight(bool on);
+void lcd1602_print_initial(const char *str);
+bool lcd1602_send_dma_data();
