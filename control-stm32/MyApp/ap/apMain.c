@@ -2,6 +2,7 @@
 #include "myI2c.h"
 
 #include "hw/sjh_driver/mpu6050.h"
+#include "hw/sjh_driver/vibration.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -13,130 +14,108 @@
  * Control STM32 - Application Main
  * ============================================================
  *
- * 현재 구현 기능
+ * 현재 구현
  *
  * 1.1 MPU6050 센서 제어
+ * 1.2 진동 데이터 처리
  *
  *
- * 향후 추가 예정
+ * 데이터 흐름
  *
- * 1.2 vibration.c
- *     - 오프셋 제거
- *     - 중력 성분 제거
- *     - 필터링
- *     - RMS
- *     - Peak
+ * MPU6050
+ *     ↓
+ * accel_x / accel_y / accel_z
+ *     ↓
+ * vibration_update()
+ *     ↓
+ * Mean / RMS / Peak
+ *     ↓
+ * vibration_value
+ *
+ *
+ * 다음 단계
  *
  * 1.3 vibration_state.c
- *     - NORMAL
- *     - WARNING
- *     - DANGER
  *
+ * vibration_value를 이용하여
  *
- * 그 외 팀 기능
+ * NORMAL
+ * WARNING
+ * DANGER
  *
- * - Sound Sensor
- * - Photo Interrupter
- * - Relay
- * - 발전 전압 측정
- * - UART 관제 데이터 전송
- *
+ * 상태를 판단한다.
  * ============================================================
  */
 
 
 /*
- * ============================================================
- * MPU6050 관련 변수
- * ============================================================
- */
-
-
-/*
- * MPU6050에서 읽은 데이터
- *
- * Live Watch에서
- *
- * mpu_data.accel_x
- * mpu_data.accel_y
- * mpu_data.accel_z
- *
- * 등을 바로 확인할 수 있다.
+ * MPU6050 데이터
  */
 static mpu6050_data_t mpu_data = {0};
 
 
 /*
- * MPU6050 초기화 결과
+ * 진동 처리 결과
  *
- * true  : 초기화 성공
- * false : 초기화 실패
+ * Live Watch에서
+ *
+ * vibration_data.vibration_rms
+ * vibration_data.vibration_peak
+ *
+ * 등을 확인할 수 있다.
+ */
+static vibration_data_t vibration_data = {0};
+
+
+/*
+ * MPU6050 초기화 상태
  */
 static bool mpu_init_status = false;
 
 
 /*
- * 가장 최근 데이터 읽기 결과
- *
- * true  : Read 성공
- * false : Read 실패
+ * MPU6050 Read 상태
  */
 static bool mpu_read_status = false;
 
 
 /*
- * 데이터 읽기 성공 횟수
- *
- * Live Watch에서 값이 계속 증가하면
- * 센서가 지속적으로 읽히고 있다는 의미이다.
+ * MPU6050 Read 성공 횟수
  */
 static uint32_t mpu_read_count = 0U;
 
 
 /*
- * 데이터 읽기 실패 횟수
+ * MPU6050 Read Error 횟수
  */
 static uint32_t mpu_error_count = 0U;
 
 
 /*
- * 연속 Read 실패 횟수
- *
- * 연속 3회 실패 시 MPU6050 재초기화를 시도한다.
+ * MPU6050 연속 실패 횟수
  */
 static uint8_t mpu_fail_count = 0U;
 
 
 /*
- * MPU6050 드라이버 상태
+ * MPU6050 Driver 상태
  */
 static mpu6050_status_t mpu_driver_status =
     MPU6050_STATUS_NOT_INITIALIZED;
 
 
 /*
- * ============================================================
- * MPU6050 Sampling Period
- * ============================================================
+ * MPU6050 Sampling
  *
- * MPU6050 내부 Sample Rate
+ * 125Hz
  *
- * 125 Hz
- *
- * 1000 ms / 125
- *
- * = 8 ms
+ * = 약 8ms
  */
 #define MPU_READ_PERIOD_MS       8U
 
 
 /*
- * Debug printf 출력 주기
- *
- * MPU6050 데이터는 8ms마다 읽지만
- * UART 출력까지 8ms마다 하면 너무 많은 시간이 소모된다.
- *
- * 따라서 UART 출력은 1000ms마다 수행한다.
+ * UART Debug 출력 주기
  */
 #define DEBUG_PRINT_PERIOD_MS    1000U
 
@@ -149,15 +128,18 @@ static mpu6050_status_t mpu_driver_status =
 void apInit(void)
 {
     /*
-     * UART Application Driver 초기화
-     *
-     * USART2 Peripheral 자체는
-     * Core/Src/main.c에서 이미 초기화되어 있다.
+     * UART 초기화
      */
     uartInit();
 
-    /* I2C에 실제 연결된 장치 확인 */
+
+    /*
+     * 현재 I2C Device 확인.
+     *
+     * 프로젝트 초기 Debug 용도로 유지.
+     */
     i2cScan();
+
 
     /*
      * MPU6050 초기화
@@ -167,43 +149,58 @@ void apInit(void)
 
 
     /*
-     * 현재 Driver 상태 저장
+     * MPU6050 상태 확인
      */
     mpu_driver_status =
         mpu6050_get_status();
 
 
     /*
-     * 초기화 성공
+     * 진동 처리 모듈 초기화
+     */
+    vibration_init();
+
+
+    /*
+     * MPU6050 초기화 결과 출력
      */
     if (mpu_init_status)
     {
         printf("\r\n");
-        printf("============================\r\n");
-        printf(" Control STM32 Start\r\n");
+
         printf("============================\r\n");
 
+        printf(" Control STM32 Start\r\n");
+
+        printf("============================\r\n");
+
+
         printf("[MPU6050] Init Success\r\n");
+
 
         printf(
             "[MPU6050] WHO_AM_I : 0x%02X\r\n",
             mpu6050_get_chip_id()
         );
 
+
         printf(
             "[MPU6050] Sample Rate : %lu Hz\r\n",
             (unsigned long)MPU6050_SAMPLE_RATE_HZ
         );
-    }
 
-    /*
-     * 초기화 실패
-     */
+
+        printf(
+            "[VIBRATION] Window : %u Samples\r\n",
+            VIBRATION_WINDOW_SIZE
+        );
+    }
     else
     {
         printf("\r\n");
 
         printf("[MPU6050] Init Failed\r\n");
+
 
         printf(
             "[MPU6050] Status : %d\r\n",
@@ -221,25 +218,25 @@ void apInit(void)
 void apMain(void)
 {
     /*
-     * 마지막 MPU6050 Read 시각
+     * MPU6050 마지막 읽기 시간
      */
     uint32_t tick_mpu = 0U;
 
 
     /*
-     * 마지막 Debug 출력 시각
+     * Debug 마지막 출력 시간
      */
     uint32_t tick_debug = 0U;
 
 
     /*
-     * MPU6050 재초기화 시각
+     * MPU6050 재초기화 시간
      */
     uint32_t tick_reinit = 0U;
 
 
     /*
-     * 현재 시간
+     * 현재 System Tick
      */
     uint32_t current_tick = 0U;
 
@@ -247,7 +244,7 @@ void apMain(void)
     while (1)
     {
         /*
-         * 현재 시스템 Tick
+         * 현재 시간
          *
          * 단위 : ms
          */
@@ -257,12 +254,12 @@ void apMain(void)
 
         /*
          * ====================================================
-         * MPU6050 데이터 읽기
+         * MPU6050 Sampling
          * ====================================================
          *
-         * 약 8ms마다 실행한다.
+         * 약 8ms마다 실행
          *
-         * 8ms ≈ 125Hz
+         * ≈ 125Hz
          */
         if ((current_tick - tick_mpu)
             >= MPU_READ_PERIOD_MS)
@@ -271,8 +268,7 @@ void apMain(void)
 
 
             /*
-             * MPU6050이 정상 초기화된 경우에만
-             * 데이터를 읽는다.
+             * MPU6050 초기화 성공 상태에서만 Read
              */
             if (mpu_init_status)
             {
@@ -281,24 +277,50 @@ void apMain(void)
 
 
                 /*
-                 * Read 성공
+                 * MPU6050 Read 성공
                  */
                 if (mpu_read_status)
                 {
-                    /*
-                     * 성공 횟수 증가
-                     */
                     mpu_read_count++;
 
 
-                    /*
-                     * 연속 오류 횟수 초기화
-                     */
                     mpu_fail_count = 0U;
+
+
+                    /*
+                     * ==========================================
+                     * 1.2 진동 데이터 처리
+                     * ==========================================
+                     *
+                     * MPU6050에서 읽은
+                     *
+                     * accel_x
+                     * accel_y
+                     * accel_z
+                     *
+                     * 를 vibration 모듈에 전달한다.
+                     *
+                     * 반환값 true는
+                     * 64 Sample Window 결과가 새로 만들어졌다는 뜻.
+                     */
+                    vibration_update(
+                        mpu_data.accel_x,
+                        mpu_data.accel_y,
+                        mpu_data.accel_z
+                    );
+
+
+                    /*
+                     * Live Watch / 관제에서 사용할 수 있도록
+                     * 최신 결과를 Application 변수로 복사한다.
+                     */
+                    vibration_get_data(
+                        &vibration_data
+                    );
                 }
 
                 /*
-                 * Read 실패
+                 * MPU6050 Read 실패
                  */
                 else
                 {
@@ -307,16 +329,12 @@ void apMain(void)
                     mpu_fail_count++;
 
 
-                    /*
-                     * 가장 최근 Driver 오류 상태 저장
-                     */
                     mpu_driver_status =
                         mpu6050_get_status();
 
 
                     /*
-                     * 3번 연속 Read 실패 시
-                     * 센서 재초기화가 필요하다고 판단한다.
+                     * 3회 연속 실패
                      */
                     if (mpu_fail_count >= 3U)
                     {
@@ -324,9 +342,6 @@ void apMain(void)
 
                         mpu_fail_count = 0U;
 
-                        /*
-                         * 재초기화 주기 시작점 저장
-                         */
                         tick_reinit = current_tick;
                     }
                 }
@@ -338,10 +353,6 @@ void apMain(void)
          * ====================================================
          * MPU6050 재초기화
          * ====================================================
-         *
-         * 초기화 실패 또는 반복 통신 오류가 발생한 경우
-         *
-         * 1초마다 재초기화를 시도한다.
          */
         if (!mpu_init_status)
         {
@@ -351,29 +362,26 @@ void apMain(void)
                 tick_reinit = current_tick;
 
 
-                /*
-                 * MPU6050 다시 초기화
-                 */
                 mpu_init_status =
                     mpu6050_reinit();
 
 
-                /*
-                 * Driver 상태 갱신
-                 */
                 mpu_driver_status =
                     mpu6050_get_status();
 
 
-                /*
-                 * 재초기화 성공 시
-                 * Read 상태 초기화
-                 */
                 if (mpu_init_status)
                 {
                     mpu_read_status = false;
 
                     mpu_fail_count = 0U;
+
+
+                    /*
+                     * 센서가 재초기화됐으므로
+                     * 기존 진동 Filter 기준값도 다시 초기화한다.
+                     */
+                    vibration_init();
                 }
             }
         }
@@ -381,17 +389,11 @@ void apMain(void)
 
         /*
          * ====================================================
-         * Debug 출력
+         * Debug Print
          * ====================================================
          *
-         * 센서는 8ms마다 읽지만
-         * printf는 1초마다 한 번만 실행한다.
-         *
-         * printf는 Blocking 방식이기 때문에
-         * 너무 자주 사용하면 진동 Sample 주기에 영향을 준다.
-         *
-         * 실제 vibration.c 개발 단계에서는
-         * Debug printf를 더 줄이거나 제거하는 것이 좋다.
+         * Sensor Sampling은 8ms이지만
+         * UART Print는 1초마다 실행한다.
          */
         if ((current_tick - tick_debug)
             >= DEBUG_PRINT_PERIOD_MS)
@@ -399,32 +401,38 @@ void apMain(void)
             tick_debug = current_tick;
 
 
-            /*
-             * 최근 센서 데이터가 정상인 경우
-             */
             if (mpu_read_status)
             {
+                /*
+                 * MPU6050 원본 가속도
+                 */
                 printf(
-                    ">acc_x:%.3f\r\n"
-                    ">acc_y:%.3f\r\n"
-                    ">acc_z:%.3f\r\n"
-                    ">gyro_x:%.3f\r\n"
-                    ">gyro_y:%.3f\r\n"
-                    ">gyro_z:%.3f\r\n"
-                    ">mpu_temp:%.2f\r\n",
+                    ">acc_x:%.4f\r\n"
+                    ">acc_y:%.4f\r\n"
+                    ">acc_z:%.4f\r\n",
                     mpu_data.accel_x,
                     mpu_data.accel_y,
-                    mpu_data.accel_z,
-                    mpu_data.gyro_x,
-                    mpu_data.gyro_y,
-                    mpu_data.gyro_z,
-                    mpu_data.temp
+                    mpu_data.accel_z
+                );
+
+
+                /*
+                 * 진동 처리 결과
+                 *
+                 * Teleplot에서도 바로 확인 가능.
+                 */
+                printf(
+                    ">vibration:%.5f\r\n"
+                    ">vibration_mean:%.5f\r\n"
+                    ">vibration_rms:%.5f\r\n"
+                    ">vibration_peak:%.5f\r\n",
+                    vibration_data.vibration_magnitude,
+                    vibration_data.vibration_mean,
+                    vibration_data.vibration_rms,
+                    vibration_data.vibration_peak
                 );
             }
 
-            /*
-             * MPU6050 초기화 실패 상태
-             */
             else if (!mpu_init_status)
             {
                 printf(
@@ -433,32 +441,5 @@ void apMain(void)
                 );
             }
         }
-
-
-        /*
-         * ====================================================
-         * 향후 추가될 프로젝트 코드
-         * ====================================================
-         *
-         * 다음 단계에서 직접 계산 코드를
-         * 이 파일에 길게 작성하지 않는다.
-         *
-         * 각 기능을 별도 모듈로 만들고
-         * 여기서는 함수만 호출한다.
-         *
-         * 예)
-         *
-         * vibration_update();
-         *
-         * vibration_state_update();
-         *
-         * rpm_update();
-         *
-         * sound_update();
-         *
-         * generator_voltage_update();
-         *
-         * uart_packet_update();
-         */
     }
 }
