@@ -20,7 +20,7 @@ PUTCHAR_PROTOTYPE
 
 void uartInit(void){
   //HAL_UART_Receive_IT(&huart2, &rx_data, 1);
-  bt_Reset();
+  // bt_Reset();
   // HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
 }
 
@@ -51,13 +51,14 @@ void uartInit(void){
 
 // }
 
-<<<<<<< Updated upstream
+// void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
+//   HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+// }
+
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
   HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
 }
 
-=======
 // void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 //   HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
 // }
->>>>>>> Stashed changes
