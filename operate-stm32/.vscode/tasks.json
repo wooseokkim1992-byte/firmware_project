@@ -2,11 +2,24 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Flash Only",
+      "label": "HC-06",
       "type": "shell",
       "command": "C:\\Program Files\\STMicroelectronics\\STM32Cube\\STM32CubeProgrammer\\bin\\STM32_Programmer_CLI",
       "args": [
-        "-c", "port=SWD",
+        "-c", "port=SWD","sn=066DFF3134584B3043133149",
+        "-w", "${command:cmake.launchTargetPath}",
+        "-v",
+        "-rst"
+      ],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "HC-05",
+      "type": "shell",
+      "command": "C:\\Program Files\\STMicroelectronics\\STM32Cube\\STM32CubeProgrammer\\bin\\STM32_Programmer_CLI",
+      "args": [
+        "-c", "port=SWD","sn=066AFF3134584B3043125530",
         "-w", "${command:cmake.launchTargetPath}",
         "-v",
         "-rst"
@@ -14,5 +27,6 @@
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "shared" }
     }
-  ]
+  ],
+  
 }

@@ -62,6 +62,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     MyApp/hw
     MyApp/hw/driver
     MyApp/kws_driver
+    MyApp/njw_driver
 )
 
 # Add project symbols (macros)

@@ -18,10 +18,15 @@ PUTCHAR_PROTOTYPE
 uint8_t rx_data;
 uint8_t rx_buf[RX_BUF_SIZE];
 
+
 void uartInit(void){
   //HAL_UART_Receive_IT(&huart2, &rx_data, 1);
+  // bt_AtIsOk(); // bt AT check ( just once )
+  // bt_SetName(); // bt Set Name ( just once )
+  // bt_SetPassword(); // bt set password  ( just once )
   HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
 }
+
 
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
@@ -52,4 +57,3 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
   HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
 }
-

@@ -8,7 +8,8 @@
         {
             "type": "stlinkgdbtarget",
             "request": "launch",
-            "name": "STM32Cube: Launch ST-Link GDB Server",
+            "serverSerialNumber": "066AFF3134584B3043125530", // 대상 ST-LINK의 시리얼 번호 입력
+            "name": "hc-05",
             "origin": "snippet",
             "cwd": "${workspaceFolder}",
             "preBuild": "${command:st-stm32-ide-debug-launch.build}",
@@ -19,10 +20,24 @@
                 }
             ],
              /* --- Live Watch 활성화를 위한 추가 설정 --- */
-            "liveWatch": {
-                "enabled": true,
-                "samplesPerSecond": "4"
-            },
+            
+        },
+        {
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "serverSerialNumber": "066DFF3134584B3043133149", // 대상 ST-LINK의 시리얼 번호 입력
+            "name": "hc-06",
+            "origin": "snippet",
+            "cwd": "${workspaceFolder}",
+            "preBuild": "${command:st-stm32-ide-debug-launch.build}",
+            "runEntry": "main",
+            "imagesAndSymbols": [
+                {
+                    "imageFileName": "${command:st-stm32-ide-debug-launch.get-projects-binary-from-context1}"
+                }
+            ],
+             /* --- Live Watch 활성화를 위한 추가 설정 --- */
+            
         }
     ]
 }
