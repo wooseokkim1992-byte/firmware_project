@@ -1,11 +1,19 @@
 
-#include "mySsd1306.h"
+#include "oled.h"
 #include "i2c.h"
 #include "main.h"
+#include "stm32f411xe.h"
+#include "stm32f4xx_hal_def.h"
 #include "stm32f4xx_hal_i2c.h"
+#include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <sys/syslimits.h>
 
-static uint8_t ssd1306_buffer[SSD1306_WIDTH * SSD1306_HEIGHT / 8];
+static uint8_t ssd1306_buffer[SSD1306_BUFFER_SIZE];
+static uint8_t ssd1306_dma_buffer[SSD1306_BUFFER_SIZE];
+static volatile bool ssd1306_dma_busy = false;
+static volatile uint32_t ssd1306_i2c_error = HAL_I2C_ERROR_NONE;
 
 /* 6x8 Basic ASCII Font Table (ASCII 0x20 ' ' to 0x7E '~') */
 static const uint8_t font6x8[][6] = {
@@ -106,8 +114,27 @@ static const uint8_t font6x8[][6] = {
     {0x08, 0x08, 0x2A, 0x1C, 0x08, 0x00}  // '~'
 };
 
-static void writeCommand(uint8_t cmd) {
-  HAL_I2C_Mem_Write(&hi2c1, SSD1306_I2C_ADDR, 0x00, 1, &cmd, 1, 10);
+static bool writeCommand(uint8_t cmd) {
+  return HAL_I2C_Mem_Write(&hi2c1, SSD1306_I2C_ADDR, 0x00, 1, &cmd, 1, 10) ==
+         HAL_OK;
+}
+
+static bool setDisplayAddressWindow(void) {
+  // set column address
+  if (!writeCommand(0x21))
+    return false;
+  if (!writeCommand(0))
+    return false;
+  if (!writeCommand(SSD1306_WIDTH - 1))
+    return false;
+  // set page address
+  if (!writeCommand(0x22))
+    return false;
+  if (!writeCommand(0))
+    return false;
+  if (!writeCommand((SSD1306_HEIGHT / 8) - 1))
+    return false;
+  return true;
 }
 
 void ssd1306Clear(void) {
@@ -115,13 +142,8 @@ void ssd1306Clear(void) {
 }
 
 void ssd1306Update(void) {
-  writeCommand(0x21); // set column address
-  writeCommand(0);
-  writeCommand(SSD1306_WIDTH - 1);
-
-  writeCommand(0x22); // set page address
-  writeCommand(0);
-  writeCommand((SSD1306_HEIGHT / 8) - 1);
+  if (!setDisplayAddressWindow())
+    return;
 
   HAL_I2C_Mem_Write(&hi2c1, SSD1306_I2C_ADDR, 0x40, 1, ssd1306_buffer,
                     sizeof(ssd1306_buffer), 100);
@@ -200,6 +222,35 @@ bool ssd1306Init(void) {
   return true;
 }
 
+bool ssd1306UpdateDMA(void) {
+  // 이전 화면이 DMA 통해 전송중일 때, 새 전송을 시작하지 않는다.
+  if (isSsd1306DMABusy()) {
+    return false;
+  }
+  if (!setDisplayAddressWindow()) {
+    ssd1306_i2c_error = HAL_I2C_GetError(&hi2c1);
+    return false;
+  }
+
+  memcpy(ssd1306_dma_buffer, ssd1306_buffer, sizeof(ssd1306_buffer));
+  ssd1306_dma_busy = true;
+  ssd1306_i2c_error = HAL_I2C_ERROR_NONE;
+
+  if (HAL_I2C_Mem_Write_DMA(&hi2c1, SSD1306_I2C_ADDR, 0x40,
+                            I2C_MEMADD_SIZE_8BIT, ssd1306_dma_buffer,
+                            sizeof(ssd1306_dma_buffer)) != HAL_OK) {
+    ssd1306_dma_busy = false;
+    ssd1306_i2c_error = HAL_I2C_GetError(&hi2c1);
+    return false;
+  }
+  return true;
+}
+
+bool isSsd1306DMABusy() {
+  return ssd1306_dma_busy ||
+         HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY;
+}
+
 void ssd1306DrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
                      uint8_t color) {
   int16_t dx = abs(x1 - x0);
@@ -241,30 +292,40 @@ void ssd1306FillRect(int16_t x, int16_t y, int16_t w, int16_t h,
   }
 }
 void ssd1306DrawChar(int16_t x, int16_t y, char ch, uint8_t color) {
-    if(ch<' ' ||ch> '~')
-    {
-        return;
-    }
-    uint8_t index=ch-' ';
+  if (ch < ' ' || ch > '~') {
+    return;
+  }
+  uint8_t index = ch - ' ';
 
-    for (uint8_t i=0 ; i<6 ; i++){
-        uint8_t line=font6x8[index][i];
-        for(uint8_t j=0; j<8; j++){
-            if(line & (1<<j))
-            {
-                ssd1306DrawPixel(x+i, y+j, color);
-            }
-            else{
-                ssd1306DrawPixel(x+i, y+j, !color);
-            }
-        }
-
+  for (uint8_t i = 0; i < 6; i++) {
+    uint8_t line = font6x8[index][i];
+    for (uint8_t j = 0; j < 8; j++) {
+      if (line & (1 << j)) {
+        ssd1306DrawPixel(x + i, y + j, color);
+      } else {
+        ssd1306DrawPixel(x + i, y + j, !color);
+      }
     }
+  }
 }
-void ssd1306DrawString(int16_t x, int16_t y, const char *str, uint8_t color){
-    while(*str){
-        ssd1306DrawChar(x, y, *str, color);
-        x+=6;
-        str++;
-    }
+void ssd1306DrawString(int16_t x, int16_t y, const char *str, uint8_t color) {
+  while (*str) {
+    ssd1306DrawChar(x, y, *str, color);
+    x += 6;
+    str++;
+  }
+}
+
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c) {
+  if (hi2c->Instance == I2C1) {
+    ssd1306_dma_busy = false;
+    ssd1306_i2c_error = HAL_I2C_ERROR_NONE;
+  }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
+  if (hi2c->Instance == I2C1) {
+    ssd1306_dma_busy = false;
+    ssd1306_i2c_error = HAL_I2C_GetError(&hi2c1);
+  }
 }

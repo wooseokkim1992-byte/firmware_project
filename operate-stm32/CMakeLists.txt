@@ -58,8 +58,10 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     MyApp/ap
     MyApp/bsp
     MyApp/common
+
     MyApp/hw
     MyApp/hw/driver
+    MyApp/kws_driver
 )
 
 # Add project symbols (macros)
