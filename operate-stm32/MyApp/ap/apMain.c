@@ -4,7 +4,6 @@
 #include "myDs1302.h"
 #include "myGpio.h"
 #include "myHcSr04.h"
-#include "myLcd1602.h"
 #include "myMpu6050.h"
 #include "myUart.h"
 #include "oled.h"
@@ -13,6 +12,7 @@
 #include "stm32f4xx_hal_adc.h"
 #include "tim.h"
 
+#include "kws_lcd.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -35,7 +35,12 @@ void apInit(void) {
   uartInit();
   adcInit();
   dht11Init();
-  lcd1602Init();
+  if (lcd1602_init()) {
+    lcd1602_cursor(0, 0);
+    lcd1602_print("LCD1602 READY   ");
+    lcd1602_cursor(1, 0);
+    lcd1602_print("I2C3: 100kHz    ");
+  }
   mpu6050Init();
   // ssd1306Init();
   ds1302Init();
@@ -51,6 +56,7 @@ void apMain(void) {
   draw_SSD_Frame(true);
   uint32_t current_tick = 0;
   uint32_t tick_250 = 0;
+  uint32_t tick_100 = 0;
   while (1) {
     current_tick = HAL_GetTick();
     if (current_tick - tick_250 >= 250) {
@@ -62,6 +68,11 @@ void apMain(void) {
         // ssd1306Update();
         ssd1306UpdateDMA();
       }
+    }
+    if (current_tick - tick_100 >= 100) {
+      tick_100 = current_tick;
+      lcd1602_cursor(0, 0);
+      lcd1602_print("hellow");
     }
   }
 }
