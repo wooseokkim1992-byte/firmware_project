@@ -9,68 +9,90 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/types.h>
 
-#define LCD1602_POWER_ON_DELAY_MS 50U
-#define LCD1602_ENABLE_DELAY_MS 1U
-#define LCD1602_LINE_COUNT 2U
-#define LCD1602_COLUMN_COUNT 16U
-#define LCD1602_BUF_LEN 17
-#define LCD1602_DMA_BUF_LEN 64
 static bool lcd_ok = false;
 static bool backlight_state = true;
-static bool lcd_dma_busy = false;
+static volatile bool lcd_dma_busy = false;
+static uint8_t lcd_buffer_row = 0U;
 
-static char lcd1602_buf[LCD1602_BUF_LEN] = {
-    0,
-};
-static char lcd1602_dma_buf[LCD1602_DMA_BUF_LEN] = {
-    0,
-};
+static char lcd1602_buf[LCD1602_LINE_COUNT][LCD1602_BUF_LEN];
+static uint8_t lcd1602_dma_buf[LCD1602_DMA_BUF_LEN];
 
-static bool lcd1602_is_dma_busy() { return lcd_dma_busy; }
+static bool lcd1602_is_dma_busy(void) { return lcd_dma_busy; }
 
-static bool lcd1602_fill_buffer(const char *data) {
-  if (data != NULL && strlen(data) - 1 < LCD1602_BUF_LEN &&
-      !lcd1602_is_dma_busy()) {
+static bool lcd1602_copy_line(uint8_t row, const char *data) {
+  size_t length;
 
-    memcpy(lcd1602_buf, data, LCD1602_BUF_LEN);
-    return true;
+  if ((row >= LCD1602_LINE_COUNT) || (data == NULL)) {
+    return false;
   }
-  return false;
+
+  length = strlen(data);
+  if (length > LCD1602_COLUMN_COUNT) {
+    length = LCD1602_COLUMN_COUNT;
+  }
+
+  memset(lcd1602_buf[row], ' ', LCD1602_COLUMN_COUNT);
+  memcpy(lcd1602_buf[row], data, length);
+  lcd1602_buf[row][LCD1602_COLUMN_COUNT] = '\0';
+
+  return true;
 }
 
-static bool lcd1602_send_DMA_byte(u_int8_t rs) {
+static void lcd1602_encode_byte(uint8_t data, uint8_t rs,
+                                uint16_t *dma_idx) {
   uint8_t backlight = backlight_state ? LCD_BL : 0x00U;
-  u_int16_t dma_idx = 0;
-  u_int16_t src_idx = 0;
-  while (lcd1602_buf[src_idx] != '\0') {
-    u_int8_t data = (u_int8_t)lcd1602_buf[src_idx++];
-    u_int8_t high = data & 0xF0U;
-    u_int8_t low = (uint8_t)((data << 4U) & 0xF0U);
-    lcd1602_dma_buf[dma_idx++] = (u_int8_t)(high | backlight | rs | LCD_EN);
-    lcd1602_dma_buf[dma_idx++] = (u_int8_t)(high | backlight | rs);
-    lcd1602_dma_buf[dma_idx++] = (u_int8_t)(low | backlight | rs | LCD_EN);
-    lcd1602_dma_buf[dma_idx++] = (u_int8_t)(low | backlight | rs);
+  uint8_t high = data & 0xF0U;
+  uint8_t low = (uint8_t)((data << 4U) & 0xF0U);
+
+  lcd1602_dma_buf[(*dma_idx)++] =
+      (uint8_t)(high | backlight | rs | LCD_EN);
+  lcd1602_dma_buf[(*dma_idx)++] = (uint8_t)(high | backlight | rs);
+  lcd1602_dma_buf[(*dma_idx)++] =
+      (uint8_t)(low | backlight | rs | LCD_EN);
+  lcd1602_dma_buf[(*dma_idx)++] = (uint8_t)(low | backlight | rs);
+}
+
+bool lcd1602_send_dma_data(void) {
+  uint16_t dma_idx = 0U;
+
+  if (!lcd_ok || lcd1602_is_dma_busy()) {
+    return false;
   }
-  if (dma_idx == 0)
-    return true;
+
+  /* 1행 시작 주소(0x80)와 16문자를 DMA 프레임에 추가한다. */
+  lcd1602_encode_byte(0x80U, 0x00U, &dma_idx);
+  for (uint8_t col = 0U; col < LCD1602_COLUMN_COUNT; ++col) {
+    lcd1602_encode_byte((uint8_t)lcd1602_buf[0][col], LCD_RS, &dma_idx);
+  }
+
+  /* 2행 시작 주소(0xC0)와 16문자를 DMA 프레임에 추가한다. */
+  lcd1602_encode_byte(0xC0U, 0x00U, &dma_idx);
+  for (uint8_t col = 0U; col < LCD1602_COLUMN_COUNT; ++col) {
+    lcd1602_encode_byte((uint8_t)lcd1602_buf[1][col], LCD_RS, &dma_idx);
+  }
+
   lcd_dma_busy = true;
   if (HAL_I2C_Master_Transmit_DMA(&hi2c3, LCD1602_ADDR,
-                                  (uint8_t *)lcd1602_dma_buf,
-                                  dma_idx) != HAL_OK) {
-    memset(lcd1602_dma_buf, 0, LCD1602_DMA_BUF_LEN);
+                                  lcd1602_dma_buf, dma_idx) != HAL_OK) {
     lcd_dma_busy = false;
     return false;
   }
+
   return true;
 }
 
-bool lcd1602_send_dma_data() {
-  if (!lcd_ok || lcd1602_is_dma_busy())
+bool lcd1602_update_lines_dma(const char *line1, const char *line2) {
+  if (!lcd_ok || lcd1602_is_dma_busy() || (line1 == NULL) ||
+      (line2 == NULL)) {
     return false;
-  lcd1602_send_DMA_byte(LCD_RS);
-  return true;
+  }
+
+  if (!lcd1602_copy_line(0U, line1) || !lcd1602_copy_line(1U, line2)) {
+    return false;
+  }
+
+  return lcd1602_send_dma_data();
 }
 
 static HAL_StatusTypeDef lcd1602_i2c_transmit(uint8_t *data, uint16_t size) {
@@ -151,7 +173,8 @@ bool lcd1602_init(void) {
   lcd1602_clear();
   lcd1602_send_command(0x06U); /* Entry mode: cursor moves right */
   lcd1602_send_command(0x0CU); /* Display ON, cursor/blink OFF */
-  memset(lcd1602_buf, 0, sizeof(lcd1602_buf));
+  (void)lcd1602_copy_line(0U, "");
+  (void)lcd1602_copy_line(1U, "");
   return lcd_ok;
 }
 
@@ -190,6 +213,7 @@ void lcd1602_cursor(uint8_t row, uint8_t col) {
     return;
   }
 
+  lcd_buffer_row = row;
   lcd1602_send_command((uint8_t)(0x80U | (row_address[row] + col)));
 }
 
@@ -204,14 +228,11 @@ void lcd1602_print_initial(const char *str) {
 }
 
 void lcd1602_print(const char *str) {
-  if (!lcd_ok || (str == NULL)) {
+  if (!lcd_ok || lcd1602_is_dma_busy() || (str == NULL)) {
     return;
   }
-  lcd1602_fill_buffer(str);
-  //   while ((*str != '\0') && lcd_ok) {
-  //     lcd1602_send_data((uint8_t)*str);
-  //     ++str;
-  //   }
+
+  (void)lcd1602_copy_line(lcd_buffer_row, str);
 }
 
 void lcd1602_printf(const char *fmt, ...) {
@@ -247,7 +268,5 @@ void lcd1602_backlight(bool on) {
 void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c) {
   if (hi2c->Instance == I2C3) {
     lcd_dma_busy = false;
-    memset(lcd1602_buf, 0, LCD1602_BUF_LEN);
-    memset(lcd1602_dma_buf, 0, LCD1602_DMA_BUF_LEN);
   }
 }
