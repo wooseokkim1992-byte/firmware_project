@@ -14,14 +14,15 @@ PUTCHAR_PROTOTYPE
   return ch;
 }
 
-// #define RX_BUF_SIZE 128
-// uint8_t rx_data;
-// uint8_t rx_buf[RX_BUF_SIZE];
+#define RX_BUF_SIZE 128
+uint8_t rx_data;
+uint8_t rx_buf[RX_BUF_SIZE];
 
 void uartInit(void){
   //HAL_UART_Receive_IT(&huart2, &rx_data, 1);
   // bt_Reset();
-  // HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_buf, RX_BUF_SIZE);
+
 }
 
 
@@ -56,9 +57,6 @@ void uartInit(void){
 // }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
-  HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_buf, RX_BUF_SIZE);
 }
 
-// void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
-//   HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
-// }

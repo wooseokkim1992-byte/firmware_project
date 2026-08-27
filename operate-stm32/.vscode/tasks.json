@@ -6,7 +6,7 @@
       "type": "shell",
       "command": "C:\\Program Files\\STMicroelectronics\\STM32Cube\\STM32CubeProgrammer\\bin\\STM32_Programmer_CLI",
       "args": [
-        "-c", "port=SWD", "sn=066DFF3134584B3043133149",
+        "-c", "port=SWD", "sn=066FFF484971754867065547",
         "-w", "${command:cmake.launchTargetPath}",
         "-v",
         "-rst"

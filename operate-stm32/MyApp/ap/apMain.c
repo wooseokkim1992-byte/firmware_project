@@ -15,8 +15,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "myBt_Uart.h"
+
 void apInit(void) {
-  uartInit();
+  btInit();
   init_display();
   mpu6050Init();
   // ssd1306Init();
@@ -49,6 +51,7 @@ void apMain(void) {
   uint32_t current_tick = 0;
   uint32_t tick_250 = 0;
   uint32_t tick_500 = 0;
+  bt_sendHeader();
   while (1) {
     current_tick = HAL_GetTick();
     if (current_tick - tick_250 >= 250) {
@@ -58,6 +61,7 @@ void apMain(void) {
         ssd1306DrawString(4, 15, "STATE: NORMAL", SSD1306_COLOR_WHITE);
         // ssd1306Update();
         ssd1306UpdateDMA();
+
       }
     }
     if (current_tick - tick_500 >= 2000) {
