@@ -2,7 +2,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 bool sound_offset_remove_window(const uint16_t *raw_samples,
                                 int16_t *centered_samples,

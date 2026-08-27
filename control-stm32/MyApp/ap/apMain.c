@@ -1,5 +1,4 @@
 #include "apMain.h"
-#include "kws_driver/sound_offset.h"
 #include "myI2c.h"
 
 #include "hw/sjh_driver/mpu6050.h"
@@ -7,17 +6,16 @@
 #include "hw/sjh_driver/vibration_state.h"
 
 #include "hw/kws_driver/kws_adc.h"
+#include "hw/kws_driver/sound_level.h"
 #include "hw/kws_driver/sound_offset.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
 // sound 측정에 필요한 데이터 목록
-extern bool adc_half_ready;
-extern bool adc_full_ready;
-extern uint16_t adc_dma_buffer[ADC_DMA_BUFFER_SIZE];
 static int16_t sound_centered_samples[ADC_WINDOW_SIZE];
 static uint16_t sound_dc_offset = 0U;
+static sound_level_data_t sound_level_result = {0};
 /*
  * ============================================================
  * Control STM32 - Application Main
@@ -168,6 +166,23 @@ static mpu6050_status_t mpu_driver_status = MPU6050_STATUS_NOT_INITIALIZED;
  */
 #define DEBUG_PRINT_PERIOD_MS 1000U
 
+static void sound_process_window(const uint16_t *raw_samples) {
+  if (!sound_offset_remove_window(raw_samples, sound_centered_samples,
+                                  ADC_WINDOW_SIZE, &sound_dc_offset)) {
+    return;
+  }
+
+  if (!sound_level_calculate(sound_centered_samples, ADC_WINDOW_SIZE,
+                             &sound_level_result)) {
+    return;
+  }
+
+  printf(">sound_offset:%u\r\n", sound_dc_offset);
+  printf(">sound_mean_abs:%.2f\r\n", sound_level_result.mean_absolute);
+  printf(">sound_rms:%.2f\r\n", sound_level_result.rms);
+  printf(">sound_peak:%u\r\n", sound_level_result.peak);
+}
+
 /*
  * ============================================================
  * Application Initialization
@@ -245,7 +260,9 @@ void apInit(void) {
     printf("[MPU6050] Status : %d\r\n", (int)mpu_driver_status);
   }
   if (adc_init()) {
-    printf("Start Detecting Sound Signals\n");
+    printf("Start Detecting Sound Signals\r\n");
+  } else {
+    printf("Failed to start Sound ADC\r\n");
   }
 }
 
@@ -275,8 +292,6 @@ void apMain(void) {
    */
   uint32_t current_tick = 0U;
 
-  uint32_t tick_sound = 0;
-
   while (1) {
     /*
      * 현재 시간
@@ -284,28 +299,17 @@ void apMain(void) {
      * 단위 : ms
      */
     current_tick = HAL_GetTick();
-    // sound gathering
-    if (current_tick - tick_sound >= 125) {
-      tick_sound = current_tick;
-      if (adc_half_ready) {
-        /*
-         * 첫 번째 100ms 구간
-         * adc_dma_buffer[0] ~ adc_dma_buffer[799]
-         */
-        sound_offset_remove_window(&adc_dma_buffer[0], sound_centered_samples,
-                                   ADC_WINDOW_SIZE, &sound_dc_offset);
-        adc_half_ready = false;
-      }
-      if (adc_full_ready) {
-        /*
-         * 두 번째 100ms 구간
-         * adc_dma_buffer[800] ~ adc_dma_buffer[1599]
-         */
-        adc_full_ready = false;
-        sound_offset_remove_window(&adc_dma_buffer[ADC_WINDOW_SIZE],
-                                   sound_centered_samples, ADC_WINDOW_SIZE,
-                                   &sound_dc_offset);
-      }
+    /*
+     * DMA 콜백이 100ms마다 준비한 구간을 즉시 처리한다.
+     */
+    if (adc_half_ready) {
+      adc_half_ready = false;
+      sound_process_window(&adc_dma_buffer[0]);
+    }
+
+    if (adc_full_ready) {
+      adc_full_ready = false;
+      sound_process_window(&adc_dma_buffer[ADC_WINDOW_SIZE]);
     }
 
     /*
@@ -459,19 +463,19 @@ void apMain(void) {
          *
          * Teleplot에서도 바로 확인 가능.
          */
-        printf(">vibration:%.5f\r\n"
-               ">vibration_mean:%.5f\r\n"
-               ">vibration_rms:%.5f\r\n"
-               ">vibration_peak:%.5f\r\n",
-               vibration_data.vibration_magnitude,
-               vibration_data.vibration_mean, vibration_data.vibration_rms,
-               vibration_data.vibration_peak);
-        printf("[VIBRATION STATE] %s\r\n",
-               vibration_state_get_name(vibration_state_data.current_state));
+        // printf(">vibration:%.5f\r\n"
+        //        ">vibration_mean:%.5f\r\n"
+        //        ">vibration_rms:%.5f\r\n"
+        //        ">vibration_peak:%.5f\r\n",
+        //        vibration_data.vibration_magnitude,
+        //        vibration_data.vibration_mean, vibration_data.vibration_rms,
+        //        vibration_data.vibration_peak);
+        // printf("[VIBRATION STATE] %s\r\n",
+        //        vibration_state_get_name(vibration_state_data.current_state));
       }
 
       else if (!mpu_init_status) {
-        printf("[MPU6050] Error Status : %d\r\n", (int)mpu_driver_status);
+        // printf("[MPU6050] Error Status : %d\r\n", (int)mpu_driver_status);
       }
     }
   }
