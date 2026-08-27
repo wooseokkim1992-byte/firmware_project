@@ -1,0 +1,272 @@
+#include "kws_lcd.h"
+
+#include "i2c.h"
+#include "stm32f411xe.h"
+#include "stm32f4xx_hal_def.h"
+#include "stm32f4xx_hal_i2c.h"
+
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+static bool lcd_ok = false;
+static bool backlight_state = true;
+static volatile bool lcd_dma_busy = false;
+static uint8_t lcd_buffer_row = 0U;
+
+static char lcd1602_buf[LCD1602_LINE_COUNT][LCD1602_BUF_LEN];
+static uint8_t lcd1602_dma_buf[LCD1602_DMA_BUF_LEN];
+
+static bool lcd1602_is_dma_busy(void) { return lcd_dma_busy; }
+
+static bool lcd1602_copy_line(uint8_t row, const char *data) {
+  size_t length;
+
+  if ((row >= LCD1602_LINE_COUNT) || (data == NULL)) {
+    return false;
+  }
+
+  length = strlen(data);
+  if (length > LCD1602_COLUMN_COUNT) {
+    length = LCD1602_COLUMN_COUNT;
+  }
+
+  memset(lcd1602_buf[row], ' ', LCD1602_COLUMN_COUNT);
+  memcpy(lcd1602_buf[row], data, length);
+  lcd1602_buf[row][LCD1602_COLUMN_COUNT] = '\0';
+
+  return true;
+}
+
+static void lcd1602_encode_byte(uint8_t data, uint8_t rs,
+                                uint16_t *dma_idx) {
+  uint8_t backlight = backlight_state ? LCD_BL : 0x00U;
+  uint8_t high = data & 0xF0U;
+  uint8_t low = (uint8_t)((data << 4U) & 0xF0U);
+
+  lcd1602_dma_buf[(*dma_idx)++] =
+      (uint8_t)(high | backlight | rs | LCD_EN);
+  lcd1602_dma_buf[(*dma_idx)++] = (uint8_t)(high | backlight | rs);
+  lcd1602_dma_buf[(*dma_idx)++] =
+      (uint8_t)(low | backlight | rs | LCD_EN);
+  lcd1602_dma_buf[(*dma_idx)++] = (uint8_t)(low | backlight | rs);
+}
+
+bool lcd1602_send_dma_data(void) {
+  uint16_t dma_idx = 0U;
+
+  if (!lcd_ok || lcd1602_is_dma_busy()) {
+    return false;
+  }
+
+  /* 1행 시작 주소(0x80)와 16문자를 DMA 프레임에 추가한다. */
+  lcd1602_encode_byte(0x80U, 0x00U, &dma_idx);
+  for (uint8_t col = 0U; col < LCD1602_COLUMN_COUNT; ++col) {
+    lcd1602_encode_byte((uint8_t)lcd1602_buf[0][col], LCD_RS, &dma_idx);
+  }
+
+  /* 2행 시작 주소(0xC0)와 16문자를 DMA 프레임에 추가한다. */
+  lcd1602_encode_byte(0xC0U, 0x00U, &dma_idx);
+  for (uint8_t col = 0U; col < LCD1602_COLUMN_COUNT; ++col) {
+    lcd1602_encode_byte((uint8_t)lcd1602_buf[1][col], LCD_RS, &dma_idx);
+  }
+
+  lcd_dma_busy = true;
+  if (HAL_I2C_Master_Transmit_DMA(&hi2c3, LCD1602_ADDR,
+                                  lcd1602_dma_buf, dma_idx) != HAL_OK) {
+    lcd_dma_busy = false;
+    return false;
+  }
+
+  return true;
+}
+
+bool lcd1602_update_lines_dma(const char *line1, const char *line2) {
+  if (!lcd_ok || lcd1602_is_dma_busy() || (line1 == NULL) ||
+      (line2 == NULL)) {
+    return false;
+  }
+
+  if (!lcd1602_copy_line(0U, line1) || !lcd1602_copy_line(1U, line2)) {
+    return false;
+  }
+
+  return lcd1602_send_dma_data();
+}
+
+static HAL_StatusTypeDef lcd1602_i2c_transmit(uint8_t *data, uint16_t size) {
+  return HAL_I2C_Master_Transmit(&hi2c3, LCD1602_ADDR, data, size,
+                                 LCD1602_INIT_TIME_MS);
+}
+
+/*
+ * HD44780의 4-bit 모드가 아직 설정되지 않은 초기화 구간에서
+ * 상위 nibble 하나와 Enable 펄스만 전송한다.
+ */
+static bool lcd1602_write_init_nibble(uint8_t nibble) {
+  uint8_t backlight = backlight_state ? LCD_BL : 0x00U;
+  uint8_t tx_data[2] = {
+      (uint8_t)((nibble & 0xF0U) | backlight | LCD_EN),
+      (uint8_t)((nibble & 0xF0U) | backlight),
+  };
+
+  return lcd1602_i2c_transmit(tx_data, sizeof(tx_data)) == HAL_OK;
+}
+
+/*
+ * 명령 또는 데이터 한 바이트를 상위/하위 nibble로 나누어 전송한다.
+ * rs가 LCD_RS이면 데이터, 0이면 명령으로 처리된다.
+ */
+static bool lcd1602_write_byte(uint8_t value, uint8_t rs) {
+  uint8_t backlight = backlight_state ? LCD_BL : 0x00U;
+  uint8_t high_nibble = value & 0xF0U;
+  uint8_t low_nibble = (uint8_t)((value << 4U) & 0xF0U);
+  uint8_t tx_data[4] = {
+      (uint8_t)(high_nibble | backlight | rs | LCD_EN),
+      (uint8_t)(high_nibble | backlight | rs),
+      (uint8_t)(low_nibble | backlight | rs | LCD_EN),
+      (uint8_t)(low_nibble | backlight | rs),
+  };
+
+  return lcd1602_i2c_transmit(tx_data, sizeof(tx_data)) == HAL_OK;
+}
+
+bool lcd1602_init(void) {
+  lcd_ok = false;
+  backlight_state = true;
+
+  /* HD44780 전원 안정화 시간 확보 */
+  HAL_Delay(LCD1602_POWER_ON_DELAY_MS);
+
+  if (HAL_I2C_IsDeviceReady(&hi2c3, LCD1602_ADDR, 2U, LCD1602_INIT_TIME_MS) !=
+      HAL_OK) {
+    return false;
+  }
+
+  /* 알 수 없는 전원 초기 상태에서 8-bit 상태를 확정한다. */
+  if (!lcd1602_write_init_nibble(0x30U)) {
+    return false;
+  }
+  HAL_Delay(5U);
+
+  if (!lcd1602_write_init_nibble(0x30U)) {
+    return false;
+  }
+  HAL_Delay(LCD1602_ENABLE_DELAY_MS);
+
+  if (!lcd1602_write_init_nibble(0x30U)) {
+    return false;
+  }
+  HAL_Delay(LCD1602_ENABLE_DELAY_MS);
+
+  /* 이후 명령부터 4-bit 인터페이스를 사용한다. */
+  if (!lcd1602_write_init_nibble(0x20U)) {
+    return false;
+  }
+  HAL_Delay(LCD1602_ENABLE_DELAY_MS);
+
+  lcd_ok = true;
+
+  lcd1602_send_command(0x28U); /* 4-bit, 2-line, 5x8 font */
+  lcd1602_send_command(0x08U); /* Display OFF */
+  lcd1602_clear();
+  lcd1602_send_command(0x06U); /* Entry mode: cursor moves right */
+  lcd1602_send_command(0x0CU); /* Display ON, cursor/blink OFF */
+  (void)lcd1602_copy_line(0U, "");
+  (void)lcd1602_copy_line(1U, "");
+  return lcd_ok;
+}
+
+void lcd1602_send_command(uint8_t cmd) {
+  if (!lcd_ok) {
+    return;
+  }
+
+  if (!lcd1602_write_byte(cmd, 0x00U)) {
+    lcd_ok = false;
+    return;
+  }
+
+  /* Clear와 Return Home 명령은 실행 시간이 더 길다. */
+  if ((cmd == 0x01U) || (cmd == 0x02U)) {
+    HAL_Delay(2U);
+  }
+}
+
+void lcd1602_send_data(uint8_t data) {
+  if (!lcd_ok) {
+    return;
+  }
+
+  if (!lcd1602_write_byte(data, LCD_RS)) {
+    lcd_ok = false;
+  }
+}
+
+void lcd1602_clear(void) { lcd1602_send_command(0x01U); }
+
+void lcd1602_cursor(uint8_t row, uint8_t col) {
+  static const uint8_t row_address[LCD1602_LINE_COUNT] = {0x00U, 0x40U};
+
+  if (!lcd_ok || (row >= LCD1602_LINE_COUNT) || (col >= LCD1602_COLUMN_COUNT)) {
+    return;
+  }
+
+  lcd_buffer_row = row;
+  lcd1602_send_command((uint8_t)(0x80U | (row_address[row] + col)));
+}
+
+void lcd1602_print_initial(const char *str) {
+  if (!lcd_ok || (str == NULL)) {
+    return;
+  }
+  while ((*str != '\0') && lcd_ok) {
+    lcd1602_send_data((uint8_t)*str);
+    ++str;
+  }
+}
+
+void lcd1602_print(const char *str) {
+  if (!lcd_ok || lcd1602_is_dma_busy() || (str == NULL)) {
+    return;
+  }
+
+  (void)lcd1602_copy_line(lcd_buffer_row, str);
+}
+
+void lcd1602_printf(const char *fmt, ...) {
+  char text[33];
+  va_list args;
+
+  if (!lcd_ok || (fmt == NULL)) {
+    return;
+  }
+
+  va_start(args, fmt);
+  (void)vsnprintf(text, sizeof(text), fmt, args);
+  va_end(args);
+
+  lcd1602_print(text);
+}
+
+void lcd1602_backlight(bool on) {
+  uint8_t output;
+
+  if (!lcd_ok) {
+    return;
+  }
+
+  backlight_state = on;
+  output = backlight_state ? LCD_BL : 0x00U;
+
+  if (lcd1602_i2c_transmit(&output, 1U) != HAL_OK) {
+    lcd_ok = false;
+  }
+}
+
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c) {
+  if (hi2c->Instance == I2C3) {
+    lcd_dma_busy = false;
+  }
+}
