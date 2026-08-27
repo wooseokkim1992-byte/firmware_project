@@ -6,13 +6,18 @@
       "type": "shell",
       "command": "C:\\Program Files\\STMicroelectronics\\STM32Cube\\STM32CubeProgrammer\\bin\\STM32_Programmer_CLI",
       "args": [
-        "-c", "port=SWD",
-        "-w", "${command:cmake.launchTargetPath}",
+        "-c",
+        "port=SWD",
+        "-w",
+        "${command:cmake.launchTargetPath}",
         "-v",
         "-rst"
       ],
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "shared" }
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
     }
-  ]
+  ],
 }
