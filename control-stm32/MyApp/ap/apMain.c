@@ -16,6 +16,23 @@
 static int16_t sound_centered_samples[ADC_WINDOW_SIZE];
 static uint16_t sound_dc_offset = 0U;
 static sound_level_data_t sound_level_result = {0};
+
+/* Sound NORMAL baseline / Z-score detector test parameters.
+ * Adjust these values after collecting data from the assembled rotor. */
+static sound_level_detector_config_t sound_level_detector_config = {
+    .rms_warning_z = 1.5f,
+    .peak_warning_z = 4.8f,
+    .rms_normal_z = 1.4f,
+    .peak_normal_z = 4.0f,
+    .stddev_epsilon = 1.0f,
+    .warning_persistence = 3U,
+    .normal_persistence = 5U};
+
+/* Live Watch variables for the latest sound detector result. */
+static sound_level_detector_data_t sound_level_detector_data = {0};
+static sound_level_state_t sound_current_state = SOUND_LEVEL_STATE_NORMAL;
+static bool sound_level_state_changed = false;
+static bool sound_level_detector_configured = false;
 /*
  * ============================================================
  * Control STM32 - Application Main
@@ -104,8 +121,8 @@ static vibration_data_t vibration_data = {0};
  * ============================================================
  */
 static vibration_state_config_t vibration_state_config = {
-    .warning_threshold = 0.005f,
-    .danger_threshold = 0.010f,
+    .warning_threshold = 0.055f,
+    .danger_threshold = 0.065f,
     .hysteresis = 0.001f,
     .persistence_count = 3U};
 
@@ -177,10 +194,21 @@ static void sound_process_window(const uint16_t *raw_samples) {
     return;
   }
 
+  sound_level_state_changed = sound_level_detector_update(&sound_level_result);
+  sound_level_detector_get_data(&sound_level_detector_data);
+
   printf(">sound_offset:%u\r\n", sound_dc_offset);
   printf(">sound_mean_abs:%.2f\r\n", sound_level_result.mean_absolute);
   printf(">sound_rms:%.2f\r\n", sound_level_result.rms);
   printf(">sound_peak:%u\r\n", sound_level_result.peak);
+  printf(">sound_rms_z:%.2f\r\n", sound_level_detector_data.rms_z_score);
+  printf(">sound_peak_z:%.2f\r\n", sound_level_detector_data.peak_z_score);
+
+  if (sound_level_state_changed) {
+    sound_current_state = sound_level_detector_data.current_state;
+    printf("[SOUND STATE] %s\r\n",
+           sound_level_state_get_name(sound_current_state));
+  }
 }
 
 /*
@@ -228,6 +256,13 @@ void apInit(void) {
 
   vibration_state_get_data(&vibration_state_data);
 
+  /* Sound detector starts in NORMAL and first learns 20 baseline windows. */
+  sound_level_detector_init();
+  sound_level_detector_configured =
+      sound_level_detector_set_config(&sound_level_detector_config);
+  sound_level_detector_get_data(&sound_level_detector_data);
+  sound_current_state = sound_level_detector_data.current_state;
+
   /*
    * 초기 상태를 Application 변수에 복사
    */
@@ -255,10 +290,14 @@ void apInit(void) {
   } else {
     printf("\r\n");
 
-    printf("[MPU6050] Init Failed\r\n");
+    // printf("[MPU6050] Init Failed\r\n");
 
-    printf("[MPU6050] Status : %d\r\n", (int)mpu_driver_status);
+    // printf("[MPU6050] Status : %d\r\n", (int)mpu_driver_status);
   }
+  if (!sound_level_detector_configured) {
+    printf("[SOUND] Invalid detector configuration\r\n");
+  }
+
   if (adc_init()) {
     printf("Start Detecting Sound Signals\r\n");
   } else {
@@ -463,15 +502,15 @@ void apMain(void) {
          *
          * Teleplot에서도 바로 확인 가능.
          */
-        // printf(">vibration:%.5f\r\n"
-        //        ">vibration_mean:%.5f\r\n"
-        //        ">vibration_rms:%.5f\r\n"
-        //        ">vibration_peak:%.5f\r\n",
-        //        vibration_data.vibration_magnitude,
-        //        vibration_data.vibration_mean, vibration_data.vibration_rms,
-        //        vibration_data.vibration_peak);
-        // printf("[VIBRATION STATE] %s\r\n",
-        //        vibration_state_get_name(vibration_state_data.current_state));
+        printf(">vibration:%.5f\r\n"
+               ">vibration_mean:%.5f\r\n"
+               ">vibration_rms:%.5f\r\n"
+               ">vibration_peak:%.5f\r\n",
+               vibration_data.vibration_magnitude,
+               vibration_data.vibration_mean, vibration_data.vibration_rms,
+               vibration_data.vibration_peak);
+        printf("[VIBRATION STATE] %s\r\n",
+               vibration_state_get_name(vibration_state_data.current_state));
       }
 
       else if (!mpu_init_status) {
