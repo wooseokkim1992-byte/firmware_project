@@ -3,6 +3,7 @@
 #include "stm32f4xx_hal_uart.h"
 #include "usart.h"
 #include <string.h>
+#include "gpio.h"
 
 #define HEADER_SIZE sizeof(data_header_t)
 #define LED_DATA_SIZE sizeof(lcd_display_data_t)
@@ -129,6 +130,13 @@ void bt_DataCheck(uint8_t *rx_buf)
 
         bt_SendLedData();
     }
+    else if(data_header->check_1=='K'&&data_header->check_2=='L')
+    {
+        // motor_kill();
+        bt_rx_state = BT_RX_HEADER;
+        HAL_UART_Receive_DMA(&huart1, rx_header_buf, HEADER_SIZE);
+
+    }
     else {
         bt_rx_state = BT_RX_HEADER;
 
@@ -137,13 +145,7 @@ void bt_DataCheck(uint8_t *rx_buf)
                                  rx_header_buf,
                                  HEADER_SIZE);
     }
-    // else if(data_header->check_1=='K'&&data_header->check_2=='L')
-    // {
-    //     printf("kill"); // 모터 킬 함수
-    //     bt_rx_state = BT_RX_HEADER;
-    //     HAL_UART_Receive_DMA(&huart1, rx_header_buf, HEADER_SIZE);
-
-    // }
+    
 }
 
 void bt_SendLedData(void)
@@ -190,18 +192,12 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 }
 
 
-// void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-// {
-//     if(GPIO_Pin == KILL_Pin)
-//     {
-//         kill_request = true;
-//     }
-// }
-// void bt_SendKill(void)
-// {
-//     static data_header_t tx_kill = {'K', 'L', 0};
 
-//     HAL_UART_Transmit_DMA(&huart1,
-//                           (uint8_t *)&tx_kill,
-//                           HEADER_SIZE);
-// }
+void bt_SendKill(void)
+{
+    static data_header_t tx_kill = {'K', 'L', 0 };
+
+    HAL_UART_Transmit_DMA(&huart1,
+                          (uint8_t *)&tx_kill,
+                          HEADER_SIZE);
+}

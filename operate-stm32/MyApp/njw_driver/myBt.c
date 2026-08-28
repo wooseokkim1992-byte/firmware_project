@@ -284,6 +284,18 @@ void bt_GetState(void)
  * Slave 검색
  * ========================================================= */
 
+static void bt_IsBind(void)
+{
+    uint8_t rx[64];
+
+    bt_SendAT("AT+STATE?\r\n",
+              rx,
+              sizeof(rx),
+              2000,
+              300);
+}
+
+
 void bt_SearchSlave(void)
 {
     uint8_t rx[BT_RX_SIZE] = {0};
@@ -487,7 +499,8 @@ void bt_Reset(void)
      * 1. AT 통신 확인
      */
     bt_AtIsOk();
-
+    bt_IsBind();
+    bt_Bind();
     /*
      * 2. HC-05 기본 설정
      */
@@ -524,7 +537,7 @@ void bt_Reset(void)
      * 이미 주소가 확인된 상황이라
      * RNAME으로 접근 가능한지 재확인.
      */
-    bt_GetSlaveName();
+    // bt_GetSlaveName();
 
     // 주소를 다시 검색하고 싶으면 아래 사용.
     // bt_SearchSlave();
