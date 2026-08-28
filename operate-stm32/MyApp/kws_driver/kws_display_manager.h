@@ -26,14 +26,14 @@ typedef struct {
   uint16_t axis_y_rms_mg;
   uint16_t axis_z_rms_mg;
 
-  uint16_t rpm;
+  uint16_t rpm; // 제거
   uint16_t sound_raw;
 
   bool motor_running;
   bool relay_on;
   bool communication_ok;
-  bool mpu6050_ok;
-  bool dma_ok;
+  bool mpu6050_ok; // 모터 물어보는걸
+  bool dma_ok; // 제거
 } lcd_display_data_t;
 
 void init_display(void);
