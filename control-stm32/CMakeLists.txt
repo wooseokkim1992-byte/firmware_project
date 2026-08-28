@@ -12,7 +12,6 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
-
 # Define the build type
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
@@ -39,17 +38,21 @@ add_subdirectory(cmake/stm32cubemx)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
+
     # Add user defined library search paths
 )
 file(GLOB_RECURSE SRC_FILES "MyApp/*.c")
+
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+
     # Add user sources here
-     ${SRC_FILES}
+    ${SRC_FILES}
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+
     # Add user defined include paths
     MyApp
     MyApp/ap
@@ -61,6 +64,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+
     # Add user defined symbols
 )
 
@@ -75,5 +79,4 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 )
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     "-u" "_printf_float"
-
 )
