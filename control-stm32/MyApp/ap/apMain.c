@@ -85,29 +85,26 @@ static vibration_data_t vibration_data = {0};
 
 /*
  * ============================================================
- * 진동 상태 판정 임시 테스트 설정
+ * 진동 상태 판정 설정
  * ============================================================
  *
- * 아래 Threshold 값은 상태 판정 로직 검증용 임시값이다.
+ * 실제 회전체 구동 상태에서
+ * 완전 체결 / 지지부 유격 상태의 vibration_value를
+ * 반복 측정하여 실험적으로 설정한 Threshold.
  *
- * 실제 FAN / 발전기 구조의 최종 Threshold가 아니다.
+ * WARNING : 0.35 g
+ * DANGER  : 0.67 g
  *
- * 실제 회전체 조립 후
- * NORMAL / WARNING / DANGER 상태의 RMS 데이터를
- * 반복 측정한 뒤 반드시 다시 설정한다.
- *
- * 현재 테스트값:
- * WARNING : 0.005 g
- * DANGER  : 0.010 g
- *
- * 손으로 센서를 조금만 움직여도 DANGER가 될 수 있음.
+ * Hysteresis : 0.05 g
+ * Persistence : 3 Window
  * ============================================================
  */
 static vibration_state_config_t vibration_state_config = {
-    .warning_threshold = 0.005f,
-    .danger_threshold = 0.010f,
-    .hysteresis = 0.001f,
-    .persistence_count = 3U};
+    .warning_threshold = 0.35f,
+    .danger_threshold = 0.67f,
+    .hysteresis = 0.05f,
+    .persistence_count = 3U
+};
 
 static vibration_state_data_t vibration_state_data = {0};
 

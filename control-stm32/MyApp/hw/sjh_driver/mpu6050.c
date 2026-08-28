@@ -165,7 +165,7 @@
  *
  * 16384 LSB = 1g
  */
-#define MPU6050_ACCEL_SCALE          16384.0f
+#define MPU6050_ACCEL_SCALE          8192.0f
 
 
 /*
@@ -702,7 +702,7 @@ bool mpu6050_init(void)
      */
     if (mpu6050_write_register(
             MPU6050_REG_ACCEL_CONFIG,
-            0x00U) != HAL_OK)
+            0x08U) != HAL_OK)
     {
         current_status =
             MPU6050_STATUS_CONFIG_ERROR;
