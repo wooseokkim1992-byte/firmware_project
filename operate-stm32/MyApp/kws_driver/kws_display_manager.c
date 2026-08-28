@@ -1,22 +1,30 @@
 #include "kws_display_manager.h"
 #include "kws_lcd.h"
 #include "kws_led.h"
+#include "oled.h"
 #include <stdio.h>
+#include <string.h>
 
 extern volatile lcd_display_data_t lcd_display_data;
-static display_mode_t lcd_mode = SYSTEM_STATUS;
+volatile static display_mode_t lcd_mode = VIBE_MODE;
+volatile static display_mode_t oled_mode = VIBE_MODE;
 
 static void reset_lcd_display_mode() { lcd_mode = 0; }
+static void reset_oled_display_mode() { oled_mode = 0; }
 
-static void set_lcd_display_mode() { lcd_mode = (lcd_mode + 1) % 3; }
+static void set_lcd_display_mode() { lcd_mode = (lcd_mode + 1) % 2; }
+static void set_oled_display_mode() { oled_mode = (oled_mode + 1) % 2; }
 void init_display() {
-  lcd_mode = 0;
+  lcd_mode = VIBE_MODE;
   if (lcd1602_init()) {
     lcd1602_cursor(0, 0);
     lcd1602_print_initial("LCD1602 READY   ");
     lcd1602_cursor(1, 0);
     lcd1602_print_initial("I2C3: 100kHz    ");
   }
+  if (ssd1306Init()) {
+  }
+  reset_oled_display_mode();
   reset_lcd_display_mode();
 }
 
@@ -25,44 +33,86 @@ void set_lcd_data(lcd_display_data_t display_data) {
   reset_lcd_display_mode();
 }
 
+void update_ssd1306() {
+  if (!isSsd1306DMABusy()) {
+    ssd1306Clear();
+    char state_buf[8];
+    if (lcd_display_data.state == NORMAL) {
+      strcpy(state_buf, "NORMAL");
+    } else if (lcd_display_data.state == WARNING) {
+      strcpy(state_buf, "WARNING");
+    } else {
+      strcpy(state_buf, "DANGER");
+    }
+    char buf[SSD1306_WIDTH];
+    if (oled_mode == VIBE_MODE) {
+      if (sprintf(buf, "VIBERATION : %s", state_buf) < SSD1306_WIDTH - 1) {
+        buf[strlen(buf)] = '\0';
+        ssd1306DrawString(2, 2, buf, SSD1306_COLOR_WHITE);
+      }
+      if (sprintf(buf, "RMS:%.1f", lcd_display_data.vibration_rms_mg) <
+          SSD1306_WIDTH - 1) {
+        buf[strlen(buf)] = '\0';
+        ssd1306DrawString(2, 12, buf, SSD1306_COLOR_WHITE);
+      }
+      if (sprintf(buf, "peak:%.1f", lcd_display_data.vibration_rms_mg) <
+          SSD1306_WIDTH - 1) {
+        buf[strlen(buf)] = '\0';
+        ssd1306DrawString(2, 20, buf, SSD1306_COLOR_WHITE);
+      }
+
+    } else {
+      if (sprintf(buf, "SOUND : %s", state_buf) < SSD1306_WIDTH - 1) {
+        buf[strlen(buf)] = '\0';
+        ssd1306DrawString(2, 2, buf, SSD1306_COLOR_WHITE);
+      }
+      if (sprintf(buf, "RMS:%.1f", lcd_display_data.vibration_rms_mg) <
+          SSD1306_WIDTH - 1) {
+        buf[strlen(buf)] = '\0';
+        ssd1306DrawString(2, 12, buf, SSD1306_COLOR_WHITE);
+      }
+      if (sprintf(buf, "peak:%.1f", lcd_display_data.vibration_rms_mg) <
+          SSD1306_WIDTH - 1) {
+        buf[strlen(buf)] = '\0';
+        ssd1306DrawString(2, 20, buf, SSD1306_COLOR_WHITE);
+      }
+    }
+    ssd1306Update();
+    if (ssd1306UpdateDMA()) {
+      set_oled_display_mode();
+    }
+    // bt_sendHeader();
+  }
+}
+
 void update_lcd1602(void) {
   char line1[LCD1602_BUF_LEN] = {0};
   char line2[LCD1602_BUF_LEN] = {0};
 
-  if (lcd_mode == SYSTEM_STATUS) {
-    const char *state_text = "UNKNOWN";
+  const char *state_text = "UNKNOWN";
 
-    if (lcd_display_data.state == NORMAL) {
-      state_text = "NORMAL";
-    } else if (lcd_display_data.state == WARNING) {
-      state_text = "WARNING";
-    } else if (lcd_display_data.state == DANGER) {
-      state_text = "DANGER";
-    } else if (lcd_display_data.state == EMERGENCY_STOP) {
-      state_text = "E-STOP";
-    }
+  if (lcd_display_data.state == NORMAL) {
+    state_text = "NORMAL";
+  } else if (lcd_display_data.state == WARNING) {
+    state_text = "WARN";
+  } else if (lcd_display_data.state == DANGER) {
+    state_text = "DANGER";
+  } else if (lcd_display_data.state == EMERGENCY_STOP) {
+    state_text = "E-STOP";
+  }
+  if (lcd_mode == VIBE_MODE) {
+    (void)snprintf(line1, sizeof(line1), "VIBERATION:%s", state_text);
+    (void)snprintf(line2, sizeof(line2), "MR:%s R:%s MPU:%s",
+                   lcd_display_data.motor_running ? "Y" : "N",
+                   lcd_display_data.relay_on ? "Y" : "N",
+                   lcd_display_data.mpu6050_ok ? "Y" : "N");
 
-    (void)snprintf(line1, sizeof(line1), "%s V:%umg", state_text,
-                   (unsigned int)lcd_display_data.vibration_rms_mg);
-    (void)snprintf(line2, sizeof(line2), "M:%s R:%s C:%s",
-                   lcd_display_data.motor_running ? "RUN" : "STP",
-                   lcd_display_data.relay_on ? "ON" : "OFF",
-                   lcd_display_data.communication_ok ? "OK" : "NO");
-
-  } else if (lcd_mode == VIBE_STATUS) {
-    (void)snprintf(line1, sizeof(line1), "X:%u Y:%u",
-                   (unsigned int)lcd_display_data.axis_x_rms_mg,
-                   (unsigned int)lcd_display_data.axis_y_rms_mg);
-    (void)snprintf(line2, sizeof(line2), "Z:%u P:%u",
-                   (unsigned int)lcd_display_data.axis_z_rms_mg,
-                   (unsigned int)lcd_display_data.vibration_peak_mg);
-  } else if (lcd_mode == EXT_SENSOR) {
-    (void)snprintf(line1, sizeof(line1), "S:%u R:%u",
-                   (unsigned int)lcd_display_data.sound_raw,
-                   (unsigned int)lcd_display_data.rpm);
-    (void)snprintf(line2, sizeof(line2), "MPU:%s DMA:%s",
-                   lcd_display_data.mpu6050_ok ? "OK" : "NO",
-                   lcd_display_data.dma_ok ? "OK" : "NO");
+  } else {
+    (void)snprintf(line1, sizeof(line1), "SOUND:%s", state_text);
+    (void)snprintf(line2, sizeof(line2), "MR:%s R:%s MPU:%s",
+                   lcd_display_data.motor_running ? "Y" : "N",
+                   lcd_display_data.relay_on ? "Y" : "N",
+                   lcd_display_data.mpu6050_ok ? "Y" : "N");
   }
 
   if (lcd1602_update_lines_dma(line1, line2)) {
