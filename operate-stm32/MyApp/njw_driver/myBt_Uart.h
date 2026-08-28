@@ -24,3 +24,4 @@ void btInit(void);
 void bt_sendHeader(void);
 void bt_DataCheck(uint8_t *rx_buf);
 void bt_SendLedData(void);
+void bt_SendKill(void);

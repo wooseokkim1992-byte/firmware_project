@@ -62,7 +62,7 @@ void apMain(void) {
         ssd1306DrawString(4, 15, "STATE: NORMAL", SSD1306_COLOR_WHITE);
         // ssd1306Update();
         ssd1306UpdateDMA();
-        bt_sendHeader();
+        // bt_sendHeader();
 
       }
     }
@@ -70,13 +70,13 @@ void apMain(void) {
       tick_500 = current_tick;
       update_lcd1602();
     }
-    // if(kill_request)
-    // {
-    //   if(huart1.gState == HAL_UART_STATE_READY)
-    //   {
-    //     kill_request = false;
-    //     bt_SendKill();
-    //   }
-    // }
+    if(kill_request)
+    {
+      if(huart1.gState == HAL_UART_STATE_READY)
+      {
+        kill_request = false;
+        bt_SendKill();
+      }
+    }
   }
 }
