@@ -5,7 +5,7 @@
 
 #define BT_UART         huart1
 
-#define BT_NAME         "fan"
+#define BT_NAME         "=fan"
 #define BT_PASSWORD     "1234"
 
 /*
@@ -153,7 +153,7 @@ void bt_AtIsOk(void)
 {
     uint8_t rx[32];
 
-    bt_SendAT("AT\r\n",
+    bt_SendAT("AT+BIND?\r\n",
               rx,
               sizeof(rx),
               2000,
@@ -498,12 +498,12 @@ void bt_Reset(void)
     /*
      * 3. 주변 장치 검색 가능 모드
      */
-    // bt_SetSearchMode();
+    bt_SetSearchMode();
 
     /*
      * 4. Inquiry 설정
      */
-    // bt_SearchType();
+    bt_SearchType();
 
     /*
      * 5. SPP INIT
@@ -526,17 +526,15 @@ void bt_Reset(void)
      */
     bt_GetSlaveName();
 
-    /*
-     * 주소를 다시 검색하고 싶으면 아래 사용.
-     *
-     * bt_SearchSlave();
-     * bt_StopSearch();
-     */
+    // 주소를 다시 검색하고 싶으면 아래 사용.
+    // bt_SearchSlave();
+    // bt_StopSearch();
+
 
     /*
      * 8. PAIR
      */
-    // bt_Pair();
+    bt_Pair();
 
     /*
      * ===== 지금은 여기까지만 먼저 테스트 =====

@@ -18,6 +18,7 @@
 #include "myBt_Uart.h"
 
 void apInit(void) {
+  // bt_Reset();
   btInit();
   init_display();
   mpu6050Init();
@@ -29,6 +30,7 @@ void apInit(void) {
 float internal_temp = 0;
 bool dht_status = false;
 float distance_cm = 0.0f;
+volatile bool kill_request = false;
 lcd_display_data_t lcd_dummy_data = {.state = NORMAL,
 
                                      .vibration_rms_mg = 125U,
@@ -51,7 +53,6 @@ void apMain(void) {
   uint32_t current_tick = 0;
   uint32_t tick_250 = 0;
   uint32_t tick_500 = 0;
-  bt_sendHeader();
   while (1) {
     current_tick = HAL_GetTick();
     if (current_tick - tick_250 >= 250) {
@@ -61,6 +62,7 @@ void apMain(void) {
         ssd1306DrawString(4, 15, "STATE: NORMAL", SSD1306_COLOR_WHITE);
         // ssd1306Update();
         ssd1306UpdateDMA();
+        bt_sendHeader();
 
       }
     }
@@ -68,5 +70,13 @@ void apMain(void) {
       tick_500 = current_tick;
       update_lcd1602();
     }
+    // if(kill_request)
+    // {
+    //   if(huart1.gState == HAL_UART_STATE_READY)
+    //   {
+    //     kill_request = false;
+    //     bt_SendKill();
+    //   }
+    // }
   }
 }

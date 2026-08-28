@@ -56,7 +56,7 @@ void uartInit(void){
 //   HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
 // }
 
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_buf, RX_BUF_SIZE);
-}
+// void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
+//   HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_buf, RX_BUF_SIZE);
+// }
 

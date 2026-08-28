@@ -17,6 +17,8 @@ typedef enum
 } bt_rx_state_t;
 
 extern volatile lcd_display_data_t lcd_display_data;
+extern volatile bool kill_request;
+
 
 void btInit(void);
 void bt_sendHeader(void);
