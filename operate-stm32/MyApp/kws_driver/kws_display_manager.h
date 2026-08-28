@@ -1,14 +1,8 @@
 #pragma once
+#include "kws_led.h"
 #include "main.h"
 #include <stdbool.h>
 #include <stdint.h>
-
-typedef enum _system_state_t {
-  NORMAL = 0,
-  WARNING,
-  DANGER,
-  EMERGENCY_STOP
-} system_state_t;
 
 typedef enum _display_mode_t {
   SYSTEM_STATUS = 0,
@@ -33,10 +27,12 @@ typedef struct {
   bool relay_on;
   bool communication_ok;
   bool mpu6050_ok; // 모터 물어보는걸
-  bool dma_ok; // 제거
+  bool dma_ok;     // 제거
 } lcd_display_data_t;
 
 void init_display(void);
+
+void update_ky016(void);
 
 void update_lcd1602(void);
 

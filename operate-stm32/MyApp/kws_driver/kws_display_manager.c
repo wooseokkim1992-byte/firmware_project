@@ -1,12 +1,13 @@
 #include "kws_display_manager.h"
 #include "kws_lcd.h"
-
+#include "kws_led.h"
 #include <stdio.h>
 
-volatile lcd_display_data_t lcd_display_data;
+extern volatile lcd_display_data_t lcd_display_data;
 static display_mode_t lcd_mode = SYSTEM_STATUS;
 
 static void reset_lcd_display_mode() { lcd_mode = 0; }
+
 static void set_lcd_display_mode() { lcd_mode = (lcd_mode + 1) % 3; }
 void init_display() {
   lcd_mode = 0;
@@ -68,6 +69,8 @@ void update_lcd1602(void) {
     set_lcd_display_mode();
   }
 }
+
+void update_ky016() { update_ky016_oled(lcd_display_data.state); }
 
 // ***### 화면 1: 시스템 상태***
 
