@@ -7,6 +7,7 @@
 #include "stm32f411xe.h"
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_hal_adc.h"
+#include "stm32f4xx_hal_gpio.h"
 #include "tim.h"
 
 #include "kws_display_manager.h"
@@ -31,30 +32,34 @@ float internal_temp = 0;
 bool dht_status = false;
 float distance_cm = 0.0f;
 volatile bool kill_request = false;
-lcd_display_data_t lcd_dummy_data = {.state = NORMAL,
+volatile lcd_display_data_t lcd_display_data = {.state = EMERGENCY_STOP,
 
-                                     .vibration_rms_mg = 125U,
-                                     .vibration_peak_mg = 430U,
+                                                .vibration_rms_mg = 125U,
+                                                .vibration_peak_mg = 430U,
 
-                                     .axis_x_rms_mg = 82U,
-                                     .axis_y_rms_mg = 97U,
-                                     .axis_z_rms_mg = 54U,
+                                                .axis_x_rms_mg = 82U,
+                                                .axis_y_rms_mg = 97U,
+                                                .axis_z_rms_mg = 54U,
 
-                                     .rpm = 1450U,
-                                     .sound_raw = 1875U,
+                                                .rpm = 1450U,
+                                                .sound_raw = 1875U,
 
-                                     .motor_running = true,
-                                     .relay_on = true,
-                                     .communication_ok = true,
-                                     .mpu6050_ok = true,
-                                     .dma_ok = true};
+                                                .motor_running = true,
+                                                .relay_on = true,
+                                                .communication_ok = true,
+                                                .mpu6050_ok = true,
+                                                .dma_ok = true};
 void apMain(void) {
-  set_lcd_data(lcd_dummy_data);
+  set_lcd_data(lcd_display_data);
   uint32_t current_tick = 0;
   uint32_t tick_250 = 0;
-  uint32_t tick_500 = 0;
+  uint32_t tick_100 = 0;
   while (1) {
     current_tick = HAL_GetTick();
+    if (current_tick - tick_100 >= 100) {
+      tick_100 = current_tick;
+      update_ky016();
+    }
     if (current_tick - tick_250 >= 250) {
       tick_250 = current_tick;
       if (!isSsd1306DMABusy()) {
@@ -63,17 +68,11 @@ void apMain(void) {
         // ssd1306Update();
         ssd1306UpdateDMA();
         // bt_sendHeader();
-
       }
     }
-    if (current_tick - tick_500 >= 2000) {
-      tick_500 = current_tick;
-      update_lcd1602();
-    }
-    if(kill_request)
-    {
-      if(huart1.gState == HAL_UART_STATE_READY)
-      {
+
+    if (kill_request) {
+      if (huart1.gState == HAL_UART_STATE_READY) {
         kill_request = false;
         bt_SendKill();
       }
