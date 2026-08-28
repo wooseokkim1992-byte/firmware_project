@@ -1,121 +1,97 @@
 #include "relay.h"
-
 #include "main.h"
-#include <stddef.h>
+#include "usart.h"
 
-#define RELAY_GPIO_PORT    GPIOB
-#define RELAY_GPIO_PIN     GPIO_PIN_13
+#define RELAY_PORT   GPIOB
+#define RELAY_PIN    GPIO_PIN_13
+#define RX_SIZE      64U
 
-static GPIO_PinState RelayPinLevel(const Relay_Handle_t *relay,
-                                   RelayState_e state)
+static uint8_t rx_buffer[RX_SIZE];
+static uint16_t previous_position;
+static uint8_t previous_k;
+
+void relay_off(void)
 {
-    bool high = (state == RELAY_STATE_ON);
-
-    if (!relay->active_high) {
-        high = !high;
-    }
-    return high ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    /* LOW에서 켜지는 릴레이이므로 HIGH가 OFF */
+    HAL_GPIO_WritePin(RELAY_PORT, RELAY_PIN, GPIO_PIN_SET);
 }
 
-static void RelayApply(Relay_Handle_t *relay, RelayState_e state)
-{
-    relay->state = state;
-    HAL_GPIO_WritePin(RELAY_GPIO_PORT,
-                      RELAY_GPIO_PIN,
-                      RelayPinLevel(relay, state));
-}
-
-void Relay_Init(Relay_Handle_t *relay, bool active_high)
+void relay_init(void)
 {
     GPIO_InitTypeDef gpio = {0};
 
-    if (relay == NULL) {
-        return;
-    }
-
-    relay->active_high = active_high;
-    relay->communication_connected = false;
-    relay->emergency_stop_latched = false;
-    relay->safety_reason = RELAY_SAFETY_BOOT;
-    relay->state = RELAY_STATE_OFF;
-
     __HAL_RCC_GPIOB_CLK_ENABLE();
-    HAL_GPIO_WritePin(RELAY_GPIO_PORT,
-                      RELAY_GPIO_PIN,
-                      RelayPinLevel(relay, RELAY_STATE_OFF));
 
-    gpio.Pin = RELAY_GPIO_PIN;
+    relay_off();
+
+    gpio.Pin = RELAY_PIN;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(RELAY_GPIO_PORT, &gpio);
+
+    HAL_GPIO_Init(RELAY_PORT, &gpio);
 }
 
-bool Relay_SetMotorPower(Relay_Handle_t *relay, bool turn_on)
+HAL_StatusTypeDef relay_receive_start(void)
 {
-    if (relay == NULL) {
-        return false;
+    previous_position = 0U;
+    previous_k = 0U;
+
+    HAL_StatusTypeDef result =
+        HAL_UARTEx_ReceiveToIdle_DMA(
+            &huart6, rx_buffer, RX_SIZE);
+
+    if (result != HAL_OK) {
+        relay_off();
     }
 
-    if (turn_on) {
-        if (relay->emergency_stop_latched ||
-            !relay->communication_connected) {
-            RelayApply(relay, RELAY_STATE_OFF);
-            return false;
+    return result;
+}
+
+static void receive_byte(uint8_t byte)
+{
+    /* 관제에서 보내는 {'K', 'L', 0}의 KL 감지 */
+    if (previous_k && byte == 'L') {
+        relay_off();
+    }
+
+    previous_k = (byte == 'K');
+}
+
+void relay_receive_event(UART_HandleTypeDef *huart,
+                         uint16_t position)
+{
+    if (huart != &huart6) {
+        return;
+    }
+
+    if (position == 0U || position > RX_SIZE) {
+        relay_off();
+        return;
+    }
+
+    if (position == previous_position) {
+        return;
+    }
+
+    /* Circular DMA 버퍼가 처음으로 돌아온 경우 */
+    if (position < previous_position) {
+        while (previous_position < RX_SIZE) {
+            receive_byte(rx_buffer[previous_position++]);
         }
-        relay->safety_reason = RELAY_SAFETY_NONE;
-        RelayApply(relay, RELAY_STATE_ON);
-        return true;
+
+        previous_position = 0U;
     }
 
-    relay->safety_reason = relay->emergency_stop_latched
-                               ? RELAY_SAFETY_EMERGENCY_STOP
-                               : (relay->communication_connected
-                                      ? RELAY_SAFETY_NONE
-                                      : RELAY_SAFETY_COMMUNICATION_LOST);
-    RelayApply(relay, RELAY_STATE_OFF);
-    return true;
-}
-
-void Relay_EmergencyStop(Relay_Handle_t *relay)
-{
-    if (relay == NULL) {
-        return;
-    }
-
-    relay->emergency_stop_latched = true;
-    relay->safety_reason = RELAY_SAFETY_EMERGENCY_STOP;
-    RelayApply(relay, RELAY_STATE_OFF);
-}
-
-void Relay_SetCommunicationConnected(Relay_Handle_t *relay, bool connected)
-{
-    if (relay == NULL) {
-        return;
-    }
-
-    relay->communication_connected = connected;
-    if (!connected) {
-        relay->safety_reason = relay->emergency_stop_latched
-                                   ? RELAY_SAFETY_EMERGENCY_STOP
-                                   : RELAY_SAFETY_COMMUNICATION_LOST;
-        RelayApply(relay, RELAY_STATE_OFF);
-    } else if (!relay->emergency_stop_latched) {
-        relay->safety_reason = RELAY_SAFETY_NONE;
+    while (previous_position < position) {
+        receive_byte(rx_buffer[previous_position++]);
     }
 }
 
-RelayState_e Relay_GetState(const Relay_Handle_t *relay)
+void relay_receive_error(UART_HandleTypeDef *huart)
 {
-    return (relay != NULL) ? relay->state : RELAY_STATE_OFF;
-}
-
-RelaySafetyReason_e Relay_GetSafetyReason(const Relay_Handle_t *relay)
-{
-    return (relay != NULL) ? relay->safety_reason : RELAY_SAFETY_BOOT;
-}
-
-bool Relay_IsEmergencyStopLatched(const Relay_Handle_t *relay)
-{
-    return (relay != NULL) ? relay->emergency_stop_latched : true;
+    if (huart == &huart6) {
+        previous_k = 0U;
+        relay_off();
+    }
 }
