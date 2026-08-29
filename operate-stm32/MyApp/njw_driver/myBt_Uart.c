@@ -1,6 +1,7 @@
 #include "myBt_Uart.h"
 #include "gpio.h"
 #include "kws_display_manager.h"
+#include "kws_display_type.h"
 #include "stm32f4xx_hal_uart.h"
 #include "usart.h"
 #include <string.h>
@@ -109,8 +110,8 @@ void bt_DataCheck(uint8_t *rx_buf) {
 
 void bt_SendLedData(void) {
   static lcd_display_data_t temp = {
-      .state = NORMAL,
-
+      .vibe_state = NORMAL,
+      .sound_state = NORMAL,
       .vibration_rms_mg = 777U,
       .vibration_peak_mg = 777U,
       .sound_peak = 8484U,

@@ -25,7 +25,8 @@ bool dht_status = false;
 float distance_cm = 0.0f;
 volatile bool kill_request = false;
 volatile lcd_display_data_t lcd_display_data = {
-    .state = NORMAL,
+    .vibe_state = NORMAL,
+    .sound_state = NORMAL,
 
     .vibration_rms_mg = 35.5,
     .vibration_peak_mg = 35.5,
