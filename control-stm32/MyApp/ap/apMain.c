@@ -1,4 +1,5 @@
 #include "apMain.h"
+#include "ksh_driver/relay.h"
 #include "myI2c.h"
 
 #include "hw/sjh_driver/mpu6050.h"
@@ -121,9 +122,9 @@ static vibration_data_t vibration_data = {0};
  * ============================================================
  */
 static vibration_state_config_t vibration_state_config = {
-    .warning_threshold = 0.055f,
-    .danger_threshold = 0.065f,
-    .hysteresis = 0.001f,
+    .warning_threshold = 0.2f,
+    .danger_threshold = 0.5f,
+    .hysteresis = 0.01f,
     .persistence_count = 3U};
 
 static vibration_state_data_t vibration_state_data = {0};
@@ -228,7 +229,7 @@ void apInit(void) {
    * 프로젝트 초기 Debug 용도로 유지.
    */
   i2cScan();
-
+  relay_init();
   /*
    * MPU6050 초기화
    */
@@ -270,30 +271,30 @@ void apInit(void) {
   /*
    * MPU6050 초기화 결과 출력
    */
-  if (mpu_init_status) {
-    printf("\r\n");
+  // if (mpu_init_status) {
+  //   printf("\r\n");
 
-    printf("============================\r\n");
+  //   printf("============================\r\n");
 
-    printf(" Control STM32 Start\r\n");
+  //   printf(" Control STM32 Start\r\n");
 
-    printf("============================\r\n");
+  //   printf("============================\r\n");
 
-    printf("[MPU6050] Init Success\r\n");
+  //   printf("[MPU6050] Init Success\r\n");
 
-    printf("[MPU6050] WHO_AM_I : 0x%02X\r\n", mpu6050_get_chip_id());
+  //   printf("[MPU6050] WHO_AM_I : 0x%02X\r\n", mpu6050_get_chip_id());
 
-    printf("[MPU6050] Sample Rate : %lu Hz\r\n",
-           (unsigned long)MPU6050_SAMPLE_RATE_HZ);
+  //   printf("[MPU6050] Sample Rate : %lu Hz\r\n",
+  //          (unsigned long)MPU6050_SAMPLE_RATE_HZ);
 
-    printf("[VIBRATION] Window : %u Samples\r\n", VIBRATION_WINDOW_SIZE);
-  } else {
-    printf("\r\n");
+  //   printf("[VIBRATION] Window : %u Samples\r\n", VIBRATION_WINDOW_SIZE);
+  // } else {
+  //   printf("\r\n");
 
-    // printf("[MPU6050] Init Failed\r\n");
+  //   // printf("[MPU6050] Init Failed\r\n");
 
-    // printf("[MPU6050] Status : %d\r\n", (int)mpu_driver_status);
-  }
+  //   // printf("[MPU6050] Status : %d\r\n", (int)mpu_driver_status);
+  // }
   if (!sound_level_detector_configured) {
     printf("[SOUND] Invalid detector configuration\r\n");
   }
@@ -302,7 +303,7 @@ void apInit(void) {
     printf("Start Detecting Sound Signals\r\n");
   } else {
     printf("Failed to start Sound ADC\r\n");
-  }
+   }
 }
 
 /*
@@ -331,25 +332,33 @@ void apMain(void) {
    */
   uint32_t current_tick = 0U;
 
+  uint32_t tick_125 = 0;
+
   while (1) {
     /*
      * 현재 시간
      *
      * 단위 : ms
      */
+     if(vibration_state_data.current_state==VIBRATION_STATE_DANGER){
+      relay_off();
+     }
     current_tick = HAL_GetTick();
     /*
      * DMA 콜백이 100ms마다 준비한 구간을 즉시 처리한다.
      */
-    if (adc_half_ready) {
-      adc_half_ready = false;
-      sound_process_window(&adc_dma_buffer[0]);
-    }
-
-    if (adc_full_ready) {
-      adc_full_ready = false;
-      sound_process_window(&adc_dma_buffer[ADC_WINDOW_SIZE]);
-    }
+     if(current_tick-tick_125>=125){
+      tick_125=current_tick;
+       if (adc_half_ready) {
+         adc_half_ready = false;
+         sound_process_window(&adc_dma_buffer[0]);
+       }
+   
+       if (adc_full_ready) {
+         adc_full_ready = false;
+         sound_process_window(&adc_dma_buffer[ADC_WINDOW_SIZE]);
+       }
+     }
 
     /*
      * ====================================================
@@ -514,7 +523,7 @@ void apMain(void) {
       }
 
       else if (!mpu_init_status) {
-        // printf("[MPU6050] Error Status : %d\r\n", (int)mpu_driver_status);
+        printf("[MPU6050] Error Status : %d\r\n", (int)mpu_driver_status);
       }
     }
   }

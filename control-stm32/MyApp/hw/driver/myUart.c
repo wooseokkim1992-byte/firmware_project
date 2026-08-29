@@ -35,21 +35,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
     HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
   }
 }
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
-{
-  if(huart->Instance==USART2){
+// void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+// {
+//   if(huart->Instance==USART2){
 
-    HAL_UART_Transmit(&huart2, rx_buf, Size, 100);
+//     HAL_UART_Transmit(&huart2, rx_buf, Size, 100);
 
-    HAL_UART_DMAStop(&huart2);
-    memset(rx_buf,0,Size);
+//     HAL_UART_DMAStop(&huart2);
+//     memset(rx_buf,0,Size);
 
-  }
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+//   }
+//   HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
 
-}
+// }
 
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
-  HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
-}
+// void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
+//   HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+// }
 

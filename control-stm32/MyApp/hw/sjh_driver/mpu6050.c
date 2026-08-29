@@ -165,7 +165,7 @@
  *
  * 16384 LSB = 1g
  */
-#define MPU6050_ACCEL_SCALE          16384.0f
+#define MPU6050_ACCEL_SCALE      8192.0f
 
 
 /*
@@ -247,6 +247,7 @@ static HAL_StatusTypeDef mpu6050_write_register(uint8_t reg,
 static HAL_StatusTypeDef mpu6050_read_register(uint8_t reg,
                                                uint8_t *data)
 {
+    
     return HAL_I2C_Mem_Read(
         &hi2c1,
         device_address,
@@ -702,7 +703,7 @@ bool mpu6050_init(void)
      */
     if (mpu6050_write_register(
             MPU6050_REG_ACCEL_CONFIG,
-            0x00U) != HAL_OK)
+            0x08U) != HAL_OK)
     {
         current_status =
             MPU6050_STATUS_CONFIG_ERROR;
