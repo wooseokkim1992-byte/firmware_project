@@ -135,7 +135,20 @@ void update_lcd1602(void) {
   }
 }
 
-void update_ky016() { update_ky016_oled(lcd_display_data.vibe_state); }
+void update_rgc_led() {
+  update_ky016_sound();
+  update_ky016_vibe();
+}
+
+void update_ky016_vibe() {
+  update_ky016_oled_1(lcd_display_data.vibe_state, GPIOB, GPIO_PIN_5, GPIOB,
+                      GPIO_PIN_4, GPIOB, GPIO_PIN_10);
+}
+
+void update_ky016_sound() {
+  update_ky016_oled_1(lcd_display_data.sound_state, GPIOC, GPIO_PIN_1, GPIOB,
+                      GPIO_PIN_0, GPIOA, GPIO_PIN_4);
+}
 
 // ***### 화면 1: 시스템 상태***
 

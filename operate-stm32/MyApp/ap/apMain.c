@@ -51,7 +51,7 @@ void apMain(void) {
     if (current_tick - tick_100 >= 100) {
       tick_100 = current_tick;
 
-      update_ky016();
+      update_rgc_led();
     }
     if (current_tick - tick_1000 >= 1000) {
       tick_1000 = current_tick;
