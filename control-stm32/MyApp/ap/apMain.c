@@ -1,4 +1,5 @@
 #include "apMain.h"
+#include "ksh_driver/relay.h"
 #include "myI2c.h"
 
 #include "hw/sjh_driver/mpu6050.h"
@@ -121,9 +122,9 @@ static vibration_data_t vibration_data = {0};
  * ============================================================
  */
 static vibration_state_config_t vibration_state_config = {
-    .warning_threshold = 0.055f,
-    .danger_threshold = 0.065f,
-    .hysteresis = 0.001f,
+    .warning_threshold = 0.2f,
+    .danger_threshold = 0.5f,
+    .hysteresis = 0.01f,
     .persistence_count = 3U};
 
 static vibration_state_data_t vibration_state_data = {0};
@@ -228,7 +229,7 @@ void apInit(void) {
    * 프로젝트 초기 Debug 용도로 유지.
    */
   i2cScan();
-
+  relay_init();
   /*
    * MPU6050 초기화
    */
@@ -331,25 +332,33 @@ void apMain(void) {
    */
   uint32_t current_tick = 0U;
 
+  uint32_t tick_125 = 0;
+
   while (1) {
     /*
      * 현재 시간
      *
      * 단위 : ms
      */
+     if(vibration_state_data.current_state==VIBRATION_STATE_DANGER){
+      relay_off();
+     }
     current_tick = HAL_GetTick();
     /*
      * DMA 콜백이 100ms마다 준비한 구간을 즉시 처리한다.
      */
-    if (adc_half_ready) {
-      adc_half_ready = false;
-      sound_process_window(&adc_dma_buffer[0]);
-    }
-
-    if (adc_full_ready) {
-      adc_full_ready = false;
-      sound_process_window(&adc_dma_buffer[ADC_WINDOW_SIZE]);
-    }
+     if(current_tick-tick_125>=125){
+      tick_125=current_tick;
+       if (adc_half_ready) {
+         adc_half_ready = false;
+         sound_process_window(&adc_dma_buffer[0]);
+       }
+   
+       if (adc_full_ready) {
+         adc_full_ready = false;
+         sound_process_window(&adc_dma_buffer[ADC_WINDOW_SIZE]);
+       }
+     }
 
     /*
      * ====================================================
@@ -492,25 +501,25 @@ void apMain(void) {
         /*
          * MPU6050 원본 가속도
          */
-        printf(">acc_x:%.4f\r\n"
-               ">acc_y:%.4f\r\n"
-               ">acc_z:%.4f\r\n",
-               mpu_data.accel_x, mpu_data.accel_y, mpu_data.accel_z);
+        // printf(">acc_x:%.4f\r\n"
+        //        ">acc_y:%.4f\r\n"
+        //        ">acc_z:%.4f\r\n",
+        //        mpu_data.accel_x, mpu_data.accel_y, mpu_data.accel_z);
 
         /*
          * 진동 처리 결과
          *
          * Teleplot에서도 바로 확인 가능.
          */
-        printf(">vibration:%.5f\r\n"
-               ">vibration_mean:%.5f\r\n"
-               ">vibration_rms:%.5f\r\n"
-               ">vibration_peak:%.5f\r\n",
-               vibration_data.vibration_magnitude,
-               vibration_data.vibration_mean, vibration_data.vibration_rms,
-               vibration_data.vibration_peak);
-        printf("[VIBRATION STATE] %s\r\n",
-               vibration_state_get_name(vibration_state_data.current_state));
+        // printf(">vibration:%.5f\r\n"
+        //        ">vibration_mean:%.5f\r\n"
+        //        ">vibration_rms:%.5f\r\n"
+        //        ">vibration_peak:%.5f\r\n",
+        //        vibration_data.vibration_magnitude,
+        //        vibration_data.vibration_mean, vibration_data.vibration_rms,
+        //        vibration_data.vibration_peak);
+        // printf("[VIBRATION STATE] %s\r\n",
+        //        vibration_state_get_name(vibration_state_data.current_state));
       }
 
       else if (!mpu_init_status) {
