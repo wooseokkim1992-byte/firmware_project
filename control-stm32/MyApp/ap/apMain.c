@@ -271,30 +271,30 @@ void apInit(void) {
   /*
    * MPU6050 초기화 결과 출력
    */
-  if (mpu_init_status) {
-    printf("\r\n");
+  // if (mpu_init_status) {
+  //   printf("\r\n");
 
-    printf("============================\r\n");
+  //   printf("============================\r\n");
 
-    printf(" Control STM32 Start\r\n");
+  //   printf(" Control STM32 Start\r\n");
 
-    printf("============================\r\n");
+  //   printf("============================\r\n");
 
-    printf("[MPU6050] Init Success\r\n");
+  //   printf("[MPU6050] Init Success\r\n");
 
-    printf("[MPU6050] WHO_AM_I : 0x%02X\r\n", mpu6050_get_chip_id());
+  //   printf("[MPU6050] WHO_AM_I : 0x%02X\r\n", mpu6050_get_chip_id());
 
-    printf("[MPU6050] Sample Rate : %lu Hz\r\n",
-           (unsigned long)MPU6050_SAMPLE_RATE_HZ);
+  //   printf("[MPU6050] Sample Rate : %lu Hz\r\n",
+  //          (unsigned long)MPU6050_SAMPLE_RATE_HZ);
 
-    printf("[VIBRATION] Window : %u Samples\r\n", VIBRATION_WINDOW_SIZE);
-  } else {
-    printf("\r\n");
+  //   printf("[VIBRATION] Window : %u Samples\r\n", VIBRATION_WINDOW_SIZE);
+  // } else {
+  //   printf("\r\n");
 
-    // printf("[MPU6050] Init Failed\r\n");
+  //   // printf("[MPU6050] Init Failed\r\n");
 
-    // printf("[MPU6050] Status : %d\r\n", (int)mpu_driver_status);
-  }
+  //   // printf("[MPU6050] Status : %d\r\n", (int)mpu_driver_status);
+  // }
   if (!sound_level_detector_configured) {
     printf("[SOUND] Invalid detector configuration\r\n");
   }
@@ -303,7 +303,7 @@ void apInit(void) {
     printf("Start Detecting Sound Signals\r\n");
   } else {
     printf("Failed to start Sound ADC\r\n");
-  }
+   }
 }
 
 /*
@@ -501,29 +501,29 @@ void apMain(void) {
         /*
          * MPU6050 원본 가속도
          */
-        // printf(">acc_x:%.4f\r\n"
-        //        ">acc_y:%.4f\r\n"
-        //        ">acc_z:%.4f\r\n",
-        //        mpu_data.accel_x, mpu_data.accel_y, mpu_data.accel_z);
+        printf(">acc_x:%.4f\r\n"
+               ">acc_y:%.4f\r\n"
+               ">acc_z:%.4f\r\n",
+               mpu_data.accel_x, mpu_data.accel_y, mpu_data.accel_z);
 
         /*
          * 진동 처리 결과
          *
          * Teleplot에서도 바로 확인 가능.
          */
-        // printf(">vibration:%.5f\r\n"
-        //        ">vibration_mean:%.5f\r\n"
-        //        ">vibration_rms:%.5f\r\n"
-        //        ">vibration_peak:%.5f\r\n",
-        //        vibration_data.vibration_magnitude,
-        //        vibration_data.vibration_mean, vibration_data.vibration_rms,
-        //        vibration_data.vibration_peak);
-        // printf("[VIBRATION STATE] %s\r\n",
-        //        vibration_state_get_name(vibration_state_data.current_state));
+        printf(">vibration:%.5f\r\n"
+               ">vibration_mean:%.5f\r\n"
+               ">vibration_rms:%.5f\r\n"
+               ">vibration_peak:%.5f\r\n",
+               vibration_data.vibration_magnitude,
+               vibration_data.vibration_mean, vibration_data.vibration_rms,
+               vibration_data.vibration_peak);
+        printf("[VIBRATION STATE] %s\r\n",
+               vibration_state_get_name(vibration_state_data.current_state));
       }
 
       else if (!mpu_init_status) {
-        // printf("[MPU6050] Error Status : %d\r\n", (int)mpu_driver_status);
+        printf("[MPU6050] Error Status : %d\r\n", (int)mpu_driver_status);
       }
     }
   }
