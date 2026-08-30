@@ -39,17 +39,14 @@ static bool lcd1602_copy_line(uint8_t row, const char *data) {
   return true;
 }
 
-static void lcd1602_encode_byte(uint8_t data, uint8_t rs,
-                                uint16_t *dma_idx) {
+static void lcd1602_encode_byte(uint8_t data, uint8_t rs, uint16_t *dma_idx) {
   uint8_t backlight = backlight_state ? LCD_BL : 0x00U;
   uint8_t high = data & 0xF0U;
   uint8_t low = (uint8_t)((data << 4U) & 0xF0U);
 
-  lcd1602_dma_buf[(*dma_idx)++] =
-      (uint8_t)(high | backlight | rs | LCD_EN);
+  lcd1602_dma_buf[(*dma_idx)++] = (uint8_t)(high | backlight | rs | LCD_EN);
   lcd1602_dma_buf[(*dma_idx)++] = (uint8_t)(high | backlight | rs);
-  lcd1602_dma_buf[(*dma_idx)++] =
-      (uint8_t)(low | backlight | rs | LCD_EN);
+  lcd1602_dma_buf[(*dma_idx)++] = (uint8_t)(low | backlight | rs | LCD_EN);
   lcd1602_dma_buf[(*dma_idx)++] = (uint8_t)(low | backlight | rs);
 }
 
@@ -73,8 +70,8 @@ bool lcd1602_send_dma_data(void) {
   }
 
   lcd_dma_busy = true;
-  if (HAL_I2C_Master_Transmit_DMA(&hi2c3, LCD1602_ADDR,
-                                  lcd1602_dma_buf, dma_idx) != HAL_OK) {
+  if (HAL_I2C_Master_Transmit_DMA(&hi2c3, LCD1602_ADDR, lcd1602_dma_buf,
+                                  dma_idx) != HAL_OK) {
     lcd_dma_busy = false;
     return false;
   }
@@ -83,8 +80,7 @@ bool lcd1602_send_dma_data(void) {
 }
 
 bool lcd1602_update_lines_dma(const char *line1, const char *line2) {
-  if (!lcd_ok || lcd1602_is_dma_busy() || (line1 == NULL) ||
-      (line2 == NULL)) {
+  if (!lcd_ok || lcd1602_is_dma_busy() || (line1 == NULL) || (line2 == NULL)) {
     return false;
   }
 

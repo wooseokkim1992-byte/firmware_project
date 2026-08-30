@@ -1,20 +1,13 @@
 #include "apMain.h"
+#include "kws_led.h"
 #include "myDs1302.h"
 #include "myGpio.h"
 #include "myMpu6050.h"
 #include "myUart.h"
-#include "oled.h"
-#include "stm32f411xe.h"
 #include "stm32f4xx_hal.h"
-#include "stm32f4xx_hal_adc.h"
-#include "stm32f4xx_hal_gpio.h"
-#include "tim.h"
 
 #include "kws_display_manager.h"
-#include "kws_lcd.h"
 #include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 
 #include "myBt_Uart.h"
 
@@ -25,50 +18,35 @@ void apInit(void) {
   mpu6050Init();
   // ssd1306Init();
   ds1302Init();
-  ssd1306Init();
 }
 
 float internal_temp = 0;
 bool dht_status = false;
 float distance_cm = 0.0f;
 volatile bool kill_request = false;
-volatile lcd_display_data_t lcd_display_data = {.state = EMERGENCY_STOP,
 
-                                                .vibration_rms_mg = 125U,
-                                                .vibration_peak_mg = 430U,
-
-                                                .axis_x_rms_mg = 82U,
-                                                .axis_y_rms_mg = 97U,
-                                                .axis_z_rms_mg = 54U,
-
-                                                .rpm = 1450U,
-                                                .sound_raw = 1875U,
-
-                                                .motor_running = true,
-                                                .relay_on = true,
-                                                .communication_ok = true,
-                                                .mpu6050_ok = true,
-                                                .dma_ok = true};
 void apMain(void) {
-  set_lcd_data(lcd_display_data);
   uint32_t current_tick = 0;
-  uint32_t tick_250 = 0;
+  uint32_t tick_1000 = 0;
   uint32_t tick_100 = 0;
+  uint32_t tick_2000 = 0;
+  // bt_sendHeader();
   while (1) {
     current_tick = HAL_GetTick();
+
     if (current_tick - tick_100 >= 100) {
+      // set_lcd_data();
       tick_100 = current_tick;
-      update_ky016();
+
+      update_rgc_led();
     }
-    if (current_tick - tick_250 >= 250) {
-      tick_250 = current_tick;
-      if (!isSsd1306DMABusy()) {
-        ssd1306Clear();
-        ssd1306DrawString(4, 15, "STATE: NORMAL", SSD1306_COLOR_WHITE);
-        // ssd1306Update();
-        ssd1306UpdateDMA();
-        // bt_sendHeader();
-      }
+    if (current_tick - tick_1000 >= 1000) {
+      tick_1000 = current_tick;
+      update_ssd1306();
+    }
+    if (current_tick - tick_2000 >= 2000) {
+      tick_2000 = current_tick;
+      update_lcd1602();
     }
 
     if (kill_request) {
