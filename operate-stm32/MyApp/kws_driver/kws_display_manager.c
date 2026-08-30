@@ -47,8 +47,10 @@ void update_ssd1306() {
         strcpy(state_buf, "NORMAL");
       } else if (lcd_display_data.vibe_state == WARNING) {
         strcpy(state_buf, "WARNING");
-      } else {
+      } else if (lcd_display_data.vibe_state == DANGER) {
         strcpy(state_buf, "DANGER");
+      } else if (!lcd_display_data.mpu6050_ok || !lcd_display_data.relay_on) {
+        strcpy(state_buf, "E-STOP");
       }
       if (sprintf(buf, "VIBERATION : %s", state_buf) < SSD1306_WIDTH - 1) {
         buf[strlen(buf)] = '\0';
@@ -110,7 +112,7 @@ void update_lcd1602(void) {
       state_text = "WARN";
     } else if (lcd_display_data.vibe_state == DANGER) {
       state_text = "DANGER";
-    } else if (lcd_display_data.vibe_state == EMERGENCY_STOP) {
+    } else if (!lcd_display_data.mpu6050_ok || !lcd_display_data.relay_on) {
       state_text = "E-STOP";
     }
     (void)snprintf(line1, sizeof(line1), "VIBERATION:%s", state_text);
@@ -149,8 +151,13 @@ void update_rgc_led() {
 }
 
 void update_ky016_vibe() {
-  update_ky016_oled_1(lcd_display_data.vibe_state, GPIOB, GPIO_PIN_5, GPIOB,
-                      GPIO_PIN_4, GPIOB, GPIO_PIN_10);
+  if (!lcd_display_data.mpu6050_ok || !lcd_display_data.relay_on) {
+    update_ky016_oled_1(EMERGENCY_STOP, GPIOB, GPIO_PIN_5, GPIOB, GPIO_PIN_4,
+                        GPIOB, GPIO_PIN_10);
+  } else {
+    update_ky016_oled_1(lcd_display_data.vibe_state, GPIOB, GPIO_PIN_5, GPIOB,
+                        GPIO_PIN_4, GPIOB, GPIO_PIN_10);
+  }
 }
 
 void update_ky016_sound() {
