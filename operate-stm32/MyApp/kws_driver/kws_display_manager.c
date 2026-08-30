@@ -1,11 +1,13 @@
 #include "kws_display_manager.h"
+#include "kws_display_type.h"
 #include "kws_lcd.h"
 #include "kws_led.h"
+#include "myBt_Uart.h"
 #include "oled.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-extern volatile lcd_display_data_t lcd_display_data;
 volatile static display_mode_t lcd_mode = VIBE_MODE;
 volatile static display_mode_t oled_mode = VIBE_MODE;
 
@@ -14,6 +16,10 @@ static void reset_oled_display_mode() { oled_mode = 0; }
 
 static void set_lcd_display_mode() { lcd_mode = (lcd_mode + 1) % 2; }
 static void set_oled_display_mode() { oled_mode = (oled_mode + 1) % 2; }
+
+extern volatile lcd_display_data_t lcd_display_data;
+extern volatile bool is_initialized_display_data;
+
 void init_display() {
   lcd_mode = VIBE_MODE;
   if (lcd1602_init()) {
@@ -22,18 +28,16 @@ void init_display() {
     lcd1602_cursor(1, 0);
     lcd1602_print_initial("I2C3: 100kHz    ");
   }
-  if (ssd1306Init()) {
-  }
+  ssd1306Init();
   reset_oled_display_mode();
   reset_lcd_display_mode();
 }
 
-void set_lcd_data(lcd_display_data_t display_data) {
-  lcd_display_data = display_data;
-  reset_lcd_display_mode();
-}
+void set_lcd_data(void) { reset_lcd_display_mode(); }
 
 void update_ssd1306() {
+  if (!is_initialized_display_data)
+    return;
   if (!isSsd1306DMABusy()) {
     ssd1306Clear();
     char state_buf[8];
@@ -73,12 +77,12 @@ void update_ssd1306() {
         buf[strlen(buf)] = '\0';
         ssd1306DrawString(2, 2, buf, SSD1306_COLOR_WHITE);
       }
-      if (sprintf(buf, "RMS:%.1f", lcd_display_data.vibration_rms_mg) <
+      if (sprintf(buf, "RMS:%.1f", lcd_display_data.sound_rms) <
           SSD1306_WIDTH - 1) {
         buf[strlen(buf)] = '\0';
         ssd1306DrawString(2, 12, buf, SSD1306_COLOR_WHITE);
       }
-      if (sprintf(buf, "peak:%.1f", lcd_display_data.vibration_rms_mg) <
+      if (sprintf(buf, "peak:%u", lcd_display_data.sound_peak) <
           SSD1306_WIDTH - 1) {
         buf[strlen(buf)] = '\0';
         ssd1306DrawString(2, 20, buf, SSD1306_COLOR_WHITE);
@@ -93,6 +97,8 @@ void update_ssd1306() {
 }
 
 void update_lcd1602(void) {
+  if (!is_initialized_display_data)
+    return;
   char line1[LCD1602_BUF_LEN] = {0};
   char line2[LCD1602_BUF_LEN] = {0};
 
@@ -136,6 +142,8 @@ void update_lcd1602(void) {
 }
 
 void update_rgc_led() {
+  if (!is_initialized_display_data)
+    return;
   update_ky016_sound();
   update_ky016_vibe();
 }

@@ -25,8 +25,13 @@ typedef struct {
   float sound_rms;
   uint16_t sound_peak;
 
-  bool motor_running;    // 모터 구동 여부
-  bool relay_on;         // relay 구동 여부
-  bool communication_ok; // 통신 성공 여부 (이것만 다름)
-  bool mpu6050_ok;       // 모터 물어보는걸
+  bool motor_running; // 모터 구동 여부
+  bool relay_on;      // relay 구동 여부
+  bool mpu6050_ok;    // 모터 물어보는걸
 } lcd_display_data_t;
+
+typedef struct {
+  bool motor_running; // 모터 구동 여부
+  bool relay_on;      // relay 구동 여부
+  bool mpu6050_ok;    // 모터 물어보는걸
+} lcd_display_data_t1;

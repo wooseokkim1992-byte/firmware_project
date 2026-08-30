@@ -12,7 +12,7 @@ void update_ky016_sound(void);
 
 void update_lcd1602(void);
 
-void set_lcd_data(lcd_display_data_t display_data);
+void set_lcd_data(void);
 
 void toggle_lcd_mode(void);
 

@@ -15,23 +15,27 @@
                 {
                     "imageFileName": "${command:st-stm32-ide-debug-launch.get-projects-binary-from-context1}"
                 }
-            ]
+            ],
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": "4"
+            }
         },
-        {
-            "type": "stlinkgdbtarget",
-            "request": "launch",
-            "serverSerialNumber": "066AFF3134584B3043125530",
-            "name": "HC-05",
-            "origin": "snippet",
-            "cwd": "${workspaceFolder}",
-            "preBuild": "${command:st-stm32-ide-debug-launch.build}",
-            "runEntry": "main",
-            "serverPort": "61239",
-            "imagesAndSymbols": [
-                {
-                    "imageFileName": "${command:st-stm32-ide-debug-launch.get-projects-binary-from-context1}"
-                }
-            ]
-        }
+        // {
+        //     "type": "stlinkgdbtarget",
+        //     "request": "launch",
+        //     "serverSerialNumber": "066AFF3134584B3043125530",
+        //     "name": "HC-05",
+        //     "origin": "snippet",
+        //     "cwd": "${workspaceFolder}",
+        //     "preBuild": "${command:st-stm32-ide-debug-launch.build}",
+        //     "runEntry": "main",
+        //     "serverPort": "61239",
+        //     "imagesAndSymbols": [
+        //         {
+        //             "imageFileName": "${command:st-stm32-ide-debug-launch.get-projects-binary-from-context1}"
+        //         }
+        //     ]
+        // }
     ]
 }
