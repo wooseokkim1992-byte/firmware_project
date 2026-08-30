@@ -61,6 +61,10 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     MyApp/hw
     MyApp/hw/driver
     MyApp/hw/sjh_driver
+    MyApp/hw/njw_driver
+    MyApp/hw/kws_driver
+    MyApp/hw/ksh_driver
+
 
 )
 

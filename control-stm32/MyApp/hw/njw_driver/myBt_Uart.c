@@ -41,7 +41,7 @@ extern volatile sound_level_data_t sound_level_result;
 extern volatile sound_level_state_t sound_current_state;
 extern volatile bool mpu_init_status;
 
-uint8_t rx_header_buf[HEADER_SIZE];
+uint8_t rx_header_buf[2];
 uint8_t rx_data_buf[LED_DATA_SIZE];
 
 void btInit(void){
@@ -89,13 +89,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if(huart->Instance==USART1)
     {
-        // if(data_header->check_1=='K'&&data_header->check_2=='L')
-        // {
-        //     relay_off();
-        //     bt_rx_state = BT_RX_HEADER;
-        //     HAL_UART_Receive_DMA(&huart1, rx_header_buf, HEADER_SIZE);
-
-        // }
+        if(*(rx_header_buf)=='K'&&*(rx_header_buf)=='L')
+        {
+            relay_off();
+            bt_rx_state = BT_RX_HEADER;
+            HAL_UART_Receive_DMA(&huart1, rx_header_buf, HEADER_SIZE);
+        }
     }
 }
 
@@ -116,13 +115,3 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     }
 }
 
-
-
-void bt_SendKill(void)
-{
-    static data_header_t tx_kill = {'K', 'L'};
-
-    HAL_UART_Transmit_DMA(&huart1,
-                          (uint8_t *)&tx_kill,
-                          HEADER_SIZE);
-}

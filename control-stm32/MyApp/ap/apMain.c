@@ -1,5 +1,6 @@
 #include "apMain.h"
 #include "ksh_driver/relay.h"
+#include "myBt_Uart.h"
 #include "myI2c.h"
 
 #include "hw/sjh_driver/mpu6050.h"
@@ -12,11 +13,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "myBt.h"
 
 // sound 측정에 필요한 데이터 목록
 static int16_t sound_centered_samples[ADC_WINDOW_SIZE];
 static uint16_t sound_dc_offset = 0U;
-static sound_level_data_t sound_level_result = {0};
+volatile sound_level_data_t sound_level_result = {0};
+volatile bool relay_state = true;
 
 /* Sound NORMAL baseline / Z-score detector test parameters.
  * Adjust these values after collecting data from the assembled rotor. */
@@ -31,9 +34,11 @@ static sound_level_detector_config_t sound_level_detector_config = {
 
 /* Live Watch variables for the latest sound detector result. */
 static sound_level_detector_data_t sound_level_detector_data = {0};
-static sound_level_state_t sound_current_state = SOUND_LEVEL_STATE_NORMAL;
+volatile sound_level_state_t sound_current_state = SOUND_LEVEL_STATE_NORMAL;
 static bool sound_level_state_changed = false;
 static bool sound_level_detector_configured = false;
+volatile bool kill_request = false;
+extern volatile bt_rx_state_t bt_rx_state;
 /*
  * ============================================================
  * Control STM32 - Application Main
@@ -86,7 +91,7 @@ static mpu6050_data_t mpu_data = {0};
  *
  * 등을 확인할 수 있다.
  */
-static vibration_data_t vibration_data = {0};
+volatile vibration_data_t vibration_data = {0};
 
 /*
  * 진동 상태 판정 결과
@@ -122,12 +127,12 @@ static vibration_data_t vibration_data = {0};
  * ============================================================
  */
 static vibration_state_config_t vibration_state_config = {
-    .warning_threshold = 0.2f,
-    .danger_threshold = 0.5f,
-    .hysteresis = 0.01f,
-    .persistence_count = 3U};
+    .warning_threshold = 1.0f,
+    .danger_threshold = 0.9f,
+    .hysteresis = 1.0f,
+    .persistence_count = 30U};
 
-static vibration_state_data_t vibration_state_data = {0};
+volatile vibration_state_data_t vibration_state_data = {0};
 
 /*
  * 새로운 64 Sample 진동 Window가
@@ -143,7 +148,7 @@ static bool vibration_state_changed = false;
 /*
  * MPU6050 초기화 상태
  */
-static bool mpu_init_status = false;
+volatile bool mpu_init_status = false;
 
 /*
  * MPU6050 Read 상태
@@ -221,15 +226,24 @@ void apInit(void) {
   /*
    * UART 초기화
    */
-  uartInit();
+  // uartInit();
 
+  // BT 모듈 재설정 ( 나재우 문의 바람 복잡)
+  // bt_Reset();
   /*
    * 현재 I2C Device 확인.
    *
    * 프로젝트 초기 Debug 용도로 유지.
    */
+  volatile uint32_t test_packet_size = sizeof(lcd_display_data_t);
+  volatile uint32_t test_enum_size = sizeof(system_state_t);
+  volatile uint32_t test_bool_size = sizeof(bool);
+
   i2cScan();
   relay_init();
+  btInit();
+
+
   /*
    * MPU6050 초기화
    */
@@ -334,6 +348,9 @@ void apMain(void) {
 
   uint32_t tick_125 = 0;
 
+  uint32_t tick_2000 = 0;
+  bool b_BtTest = true;
+
   while (1) {
     /*
      * 현재 시간
@@ -347,6 +364,14 @@ void apMain(void) {
     /*
      * DMA 콜백이 100ms마다 준비한 구간을 즉시 처리한다.
      */
+     if(current_tick-tick_2000>=2000){
+      tick_2000=current_tick;
+      if(bt_rx_state==BT_RX_HEADER){
+        
+        b_BtTest = bt_sendHeader();
+      }
+     }
+
      if(current_tick-tick_125>=125){
       tick_125=current_tick;
        if (adc_half_ready) {
@@ -369,6 +394,7 @@ void apMain(void) {
      *
      * ≈ 125Hz
      */
+
     if ((current_tick - tick_mpu) >= MPU_READ_PERIOD_MS) {
       tick_mpu = current_tick;
 
@@ -449,7 +475,7 @@ void apMain(void) {
            * 3회 연속 실패
            */
           if (mpu_fail_count >= 3U) {
-            mpu_init_status = false;
+            // mpu_init_status = false;
 
             mpu_fail_count = 0U;
 
@@ -468,21 +494,21 @@ void apMain(void) {
       if ((current_tick - tick_reinit) >= 1000U) {
         tick_reinit = current_tick;
 
-        mpu_init_status = mpu6050_reinit();
+        // mpu_init_status = mpu6050_reinit();
 
-        mpu_driver_status = mpu6050_get_status();
+        // mpu_driver_status = mpu6050_get_status();
 
-        if (mpu_init_status) {
-          mpu_read_status = false;
+        // if (mpu_init_status) {
+        //   mpu_read_status = false;
 
-          mpu_fail_count = 0U;
+        //   mpu_fail_count = 0U;
 
-          /*
-           * 센서가 재초기화됐으므로
-           * 기존 진동 Filter 기준값도 다시 초기화한다.
-           */
-          vibration_init();
-        }
+        //   /*
+        //    * 센서가 재초기화됐으므로
+        //    * 기존 진동 Filter 기준값도 다시 초기화한다.
+        //    */
+        //   vibration_init();
+        // }
       }
     }
 
@@ -501,11 +527,7 @@ void apMain(void) {
         /*
          * MPU6050 원본 가속도
          */
-        printf(">acc_x:%.4f\r\n"
-               ">acc_y:%.4f\r\n"
-               ">acc_z:%.4f\r\n",
-               mpu_data.accel_x, mpu_data.accel_y, mpu_data.accel_z);
-
+        
         /*
          * 진동 처리 결과
          *

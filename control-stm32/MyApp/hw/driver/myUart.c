@@ -20,21 +20,21 @@ uint8_t rx_buf[RX_BUF_SIZE];
 
 void uartInit(void){
   //HAL_UART_Receive_IT(&huart2, &rx_data, 1);
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+  // HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
 }
 
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+// void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 
-  if(huart->Instance==USART2){
-    if(rx_data=='a')
-      printf("Hello STM32 Cortex-M4 USART Polling!\r\n");
-    else
-      HAL_UART_Transmit(&huart2, rx_buf, RX_BUF_SIZE, 100);
+//   if(huart->Instance==USART2){
+//     if(rx_data=='a')
+//       printf("Hello STM32 Cortex-M4 USART Polling!\r\n");
+//     else
+//       HAL_UART_Transmit(&huart2, rx_buf, RX_BUF_SIZE, 100);
 
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
-  }
-}
+//     HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+//   }
+// }
 // void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 // {
 //   if(huart->Instance==USART2){
