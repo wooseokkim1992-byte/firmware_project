@@ -94,7 +94,7 @@ typedef enum
     /* 센서 설정 중 통신 오류 */
     MPU6050_STATUS_CONFIG_ERROR,
 
-    /* 데이터 읽기 중 I2C 오류 */
+    /* 초기화 또는 데이터 읽기 중 I2C 오류 */
     MPU6050_STATUS_I2C_ERROR,
 
     /* 읽은 데이터가 비정상적 */
@@ -248,6 +248,14 @@ mpu6050_status_t mpu6050_get_status(void);
  * 정상 MPU6050 = 0x68
  */
 uint8_t mpu6050_get_chip_id(void);
+
+
+/* 가장 최근 STM32 HAL I2C ErrorCode 반환 */
+uint32_t mpu6050_get_last_i2c_error(void);
+
+
+/* 마지막으로 접근에 실패한 Register. 주소 탐색 실패는 0xFF */
+uint8_t mpu6050_get_failed_register(void);
 
 
 #endif

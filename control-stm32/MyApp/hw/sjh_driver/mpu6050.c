@@ -148,7 +148,11 @@
  *
  * 단위 : ms
  */
-#define MPU6050_I2C_TIMEOUT_MS       100U
+#define MPU6050_I2C_TIMEOUT_MS       20U
+#define MPU6050_I2C_RETRY_COUNT      3U
+#define MPU6050_I2C_RETRY_DELAY_MS   2U
+#define MPU6050_POWER_UP_DELAY_MS    100U
+#define MPU6050_NO_FAILED_REGISTER   0xFFU
 
 
 /*
@@ -215,6 +219,14 @@ static uint8_t chip_id = 0U;
 static mpu6050_status_t current_status =
     MPU6050_STATUS_NOT_INITIALIZED;
 
+/* 가장 최근 I2C 오류와 실패 Register. Live Watch/로그 진단용이다. */
+static uint32_t last_i2c_error = HAL_I2C_ERROR_NONE;
+static uint8_t failed_register = MPU6050_NO_FAILED_REGISTER;
+
+/* 주소 탐색 실패 원인을 DEVICE_NOT_FOUND와 구분하기 위한 상태이다. */
+static bool probe_i2c_error = false;
+static bool probe_chip_id_error = false;
+
 
 /*
  * ============================================================
@@ -229,15 +241,39 @@ static mpu6050_status_t current_status =
 static HAL_StatusTypeDef mpu6050_write_register(uint8_t reg,
                                                 uint8_t data)
 {
-    return HAL_I2C_Mem_Write(
-        &hi2c1,
-        device_address,
-        reg,
-        I2C_MEMADD_SIZE_8BIT,
-        &data,
-        1U,
-        MPU6050_I2C_TIMEOUT_MS
-    );
+    HAL_StatusTypeDef status = HAL_ERROR;
+
+    for (uint8_t attempt = 0U;
+         attempt < MPU6050_I2C_RETRY_COUNT;
+         attempt++)
+    {
+        status = HAL_I2C_Mem_Write(
+            &hi2c1,
+            device_address,
+            reg,
+            I2C_MEMADD_SIZE_8BIT,
+            &data,
+            1U,
+            MPU6050_I2C_TIMEOUT_MS
+        );
+
+        if (status == HAL_OK)
+        {
+            last_i2c_error = HAL_I2C_ERROR_NONE;
+            failed_register = MPU6050_NO_FAILED_REGISTER;
+            return HAL_OK;
+        }
+
+        last_i2c_error = HAL_I2C_GetError(&hi2c1);
+        failed_register = reg;
+
+        if ((attempt + 1U) < MPU6050_I2C_RETRY_COUNT)
+        {
+            HAL_Delay(MPU6050_I2C_RETRY_DELAY_MS);
+        }
+    }
+
+    return status;
 }
 
 
@@ -247,16 +283,39 @@ static HAL_StatusTypeDef mpu6050_write_register(uint8_t reg,
 static HAL_StatusTypeDef mpu6050_read_register(uint8_t reg,
                                                uint8_t *data)
 {
-    
-    return HAL_I2C_Mem_Read(
-        &hi2c1,
-        device_address,
-        reg,
-        I2C_MEMADD_SIZE_8BIT,
-        data,
-        1U,
-        MPU6050_I2C_TIMEOUT_MS
-    );
+    HAL_StatusTypeDef status = HAL_ERROR;
+
+    for (uint8_t attempt = 0U;
+         attempt < MPU6050_I2C_RETRY_COUNT;
+         attempt++)
+    {
+        status = HAL_I2C_Mem_Read(
+            &hi2c1,
+            device_address,
+            reg,
+            I2C_MEMADD_SIZE_8BIT,
+            data,
+            1U,
+            MPU6050_I2C_TIMEOUT_MS
+        );
+
+        if (status == HAL_OK)
+        {
+            last_i2c_error = HAL_I2C_ERROR_NONE;
+            failed_register = MPU6050_NO_FAILED_REGISTER;
+            return HAL_OK;
+        }
+
+        last_i2c_error = HAL_I2C_GetError(&hi2c1);
+        failed_register = reg;
+
+        if ((attempt + 1U) < MPU6050_I2C_RETRY_COUNT)
+        {
+            HAL_Delay(MPU6050_I2C_RETRY_DELAY_MS);
+        }
+    }
+
+    return status;
 }
 
 
@@ -272,15 +331,39 @@ static HAL_StatusTypeDef mpu6050_read_registers(uint8_t start_reg,
                                                 uint8_t *data,
                                                 uint16_t length)
 {
-    return HAL_I2C_Mem_Read(
-        &hi2c1,
-        device_address,
-        start_reg,
-        I2C_MEMADD_SIZE_8BIT,
-        data,
-        length,
-        MPU6050_I2C_TIMEOUT_MS
-    );
+    HAL_StatusTypeDef status = HAL_ERROR;
+
+    for (uint8_t attempt = 0U;
+         attempt < MPU6050_I2C_RETRY_COUNT;
+         attempt++)
+    {
+        status = HAL_I2C_Mem_Read(
+            &hi2c1,
+            device_address,
+            start_reg,
+            I2C_MEMADD_SIZE_8BIT,
+            data,
+            length,
+            MPU6050_I2C_TIMEOUT_MS
+        );
+
+        if (status == HAL_OK)
+        {
+            last_i2c_error = HAL_I2C_ERROR_NONE;
+            failed_register = MPU6050_NO_FAILED_REGISTER;
+            return HAL_OK;
+        }
+
+        last_i2c_error = HAL_I2C_GetError(&hi2c1);
+        failed_register = start_reg;
+
+        if ((attempt + 1U) < MPU6050_I2C_RETRY_COUNT)
+        {
+            HAL_Delay(MPU6050_I2C_RETRY_DELAY_MS);
+        }
+    }
+
+    return status;
 }
 
 
@@ -317,6 +400,7 @@ static bool mpu6050_is_valid_chip_id(uint8_t id)
 static bool mpu6050_check_address(uint16_t address)
 {
     uint8_t who_am_i = 0U;
+    HAL_StatusTypeDef ready_status;
 
 
     /*
@@ -324,12 +408,24 @@ static bool mpu6050_check_address(uint16_t address)
      * 1. I2C 장치 응답 확인
      * --------------------------------------------------------
      */
-    if (HAL_I2C_IsDeviceReady(
+    ready_status = HAL_I2C_IsDeviceReady(
             &hi2c1,
             address,
             3U,
-            MPU6050_I2C_TIMEOUT_MS) != HAL_OK)
+            MPU6050_I2C_TIMEOUT_MS);
+
+    if (ready_status != HAL_OK)
     {
+        last_i2c_error = HAL_I2C_GetError(&hi2c1);
+        failed_register = MPU6050_NO_FAILED_REGISTER;
+
+        /* 단순 주소 NACK(AF)가 아닌 버스 오류는 별도로 기록한다. */
+        if ((last_i2c_error != HAL_I2C_ERROR_NONE) &&
+            (last_i2c_error != HAL_I2C_ERROR_AF))
+        {
+            probe_i2c_error = true;
+        }
+
         return false;
     }
 
@@ -350,6 +446,7 @@ static bool mpu6050_check_address(uint16_t address)
             MPU6050_REG_WHO_AM_I,
             &who_am_i) != HAL_OK)
     {
+        probe_i2c_error = true;
         return false;
     }
 
@@ -371,6 +468,8 @@ static bool mpu6050_check_address(uint16_t address)
      */
     if (!mpu6050_is_valid_chip_id(who_am_i))
     {
+        probe_chip_id_error = true;
+        failed_register = MPU6050_REG_WHO_AM_I;
         return false;
     }
 
@@ -492,11 +591,19 @@ bool mpu6050_init(void)
     current_status =
         MPU6050_STATUS_NOT_INITIALIZED;
 
+    last_i2c_error = HAL_I2C_ERROR_NONE;
+
+    failed_register = MPU6050_NO_FAILED_REGISTER;
+
+    probe_i2c_error = false;
+
+    probe_chip_id_error = false;
+
 
     /*
      * MPU6050 / MPU6500 전원 안정화 대기
      */
-    HAL_Delay(50U);
+    HAL_Delay(MPU6050_POWER_UP_DELAY_MS);
 
 
     /*
@@ -506,11 +613,17 @@ bool mpu6050_init(void)
      */
     if (!mpu6050_find_device())
     {
+        /* 주소 ACK 이후 Register Read가 실패했거나 버스 오류가 발생함. */
+        if (probe_i2c_error)
+        {
+            current_status =
+                MPU6050_STATUS_I2C_ERROR;
+        }
         /*
          * I2C 응답은 받았지만
          * 지원하지 않는 WHO_AM_I가 나온 경우
          */
-        if (chip_id != 0U)
+        else if (probe_chip_id_error)
         {
             current_status =
                 MPU6050_STATUS_WHO_AM_I_ERROR;
@@ -770,6 +883,23 @@ bool mpu6050_init(void)
  */
 bool mpu6050_reinit(void)
 {
+    /* HAL 또는 peripheral이 BUSY/Error 상태에 남아 있으면 함께 복구한다. */
+    if (HAL_I2C_DeInit(&hi2c1) != HAL_OK)
+    {
+        last_i2c_error = HAL_I2C_GetError(&hi2c1);
+        current_status = MPU6050_STATUS_I2C_ERROR;
+        return false;
+    }
+
+    HAL_Delay(MPU6050_I2C_RETRY_DELAY_MS);
+
+    if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+    {
+        last_i2c_error = HAL_I2C_GetError(&hi2c1);
+        current_status = MPU6050_STATUS_I2C_ERROR;
+        return false;
+    }
+
     return mpu6050_init();
 }
 
@@ -1152,4 +1282,18 @@ mpu6050_status_t mpu6050_get_status(void)
 uint8_t mpu6050_get_chip_id(void)
 {
     return chip_id;
+}
+
+
+/* 가장 최근 STM32 HAL I2C ErrorCode를 반환한다. */
+uint32_t mpu6050_get_last_i2c_error(void)
+{
+    return last_i2c_error;
+}
+
+
+/* 실패한 Register 주소. 주소 탐색 실패이면 0xFF를 반환한다. */
+uint8_t mpu6050_get_failed_register(void)
+{
+    return failed_register;
 }

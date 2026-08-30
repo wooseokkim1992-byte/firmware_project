@@ -385,7 +385,7 @@ bool vibration_update(float accel_x,
 
 
     /*
-     * 아직 64 Sample이 모이지 않았다면
+     * 아직 설정된 Window Sample이 모이지 않았다면
      * 결과 계산 없이 종료.
      */
     if (vibration_data.sample_count

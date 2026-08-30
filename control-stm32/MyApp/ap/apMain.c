@@ -1,7 +1,6 @@
 #include "apMain.h"
 #include "ksh_driver/relay.h"
 #include "myBt_Uart.h"
-#include "myI2c.h"
 
 #include "hw/sjh_driver/mpu6050.h"
 #include "hw/sjh_driver/vibration.h"
@@ -10,10 +9,10 @@
 #include "hw/kws_driver/kws_adc.h"
 #include "hw/kws_driver/sound_level.h"
 #include "hw/kws_driver/sound_offset.h"
+#include "myBt.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "myBt.h"
 
 // sound 측정에 필요한 데이터 목록
 static int16_t sound_centered_samples[ADC_WINDOW_SIZE];
@@ -119,23 +118,21 @@ volatile vibration_data_t vibration_data = {0};
  * NORMAL / WARNING / DANGER 상태의 RMS 데이터를
  * 반복 측정한 뒤 반드시 다시 설정한다.
  *
- * 현재 테스트값:
- * WARNING : 0.005 g
- * DANGER  : 0.010 g
- *
- * 손으로 센서를 조금만 움직여도 DANGER가 될 수 있음.
+ * 안정 동작 확인값:
+ * WARNING : 0.2 g
+ * DANGER  : 0.5 g
  * ============================================================
  */
 static vibration_state_config_t vibration_state_config = {
-    .warning_threshold = 1.0f,
-    .danger_threshold = 0.9f,
-    .hysteresis = 1.0f,
-    .persistence_count = 30U};
+    .warning_threshold = 0.2f,
+    .danger_threshold = 0.5f,
+    .hysteresis = 0.01f,
+    .persistence_count = 1U};
 
 volatile vibration_state_data_t vibration_state_data = {0};
 
 /*
- * 새로운 64 Sample 진동 Window가
+ * 새로운 진동 Window가
  * 만들어졌는지 확인.
  */
 static bool vibration_updated = false;
@@ -178,16 +175,36 @@ static mpu6050_status_t mpu_driver_status = MPU6050_STATUS_NOT_INITIALIZED;
 /*
  * MPU6050 Sampling
  *
- * 125Hz
+ * Application Read Period
  *
- * = 약 8ms
+ * = 800ms (약 1.25Hz)
  */
-#define MPU_READ_PERIOD_MS 8U
+#define MPU_READ_PERIOD_MS 800U
+#define MPU_REINIT_PERIOD_MS 1000U
+#define MPU_INIT_RETRY_COUNT 3U
+#define MPU_MAX_CONSECUTIVE_FAILURES 3U
 
 /*
  * UART Debug 출력 주기
  */
 #define DEBUG_PRINT_PERIOD_MS 1000U
+
+/* 부팅 중 일시적인 I2C 오류가 발생해도 센서 초기화를 다시 시도한다. */
+static bool mpu6050_initialize_with_retry(void) {
+  for (uint8_t attempt = 0U; attempt < MPU_INIT_RETRY_COUNT; attempt++) {
+    bool initialized = (attempt == 0U) ? mpu6050_init() : mpu6050_reinit();
+
+    if (initialized) {
+      return true;
+    }
+
+    if ((attempt + 1U) < MPU_INIT_RETRY_COUNT) {
+      HAL_Delay(100U);
+    }
+  }
+
+  return false;
+}
 
 static void sound_process_window(const uint16_t *raw_samples) {
   if (!sound_offset_remove_window(raw_samples, sound_centered_samples,
@@ -239,20 +256,24 @@ void apInit(void) {
   volatile uint32_t test_enum_size = sizeof(system_state_t);
   volatile uint32_t test_bool_size = sizeof(bool);
 
-  i2cScan();
   relay_init();
   btInit();
-
 
   /*
    * MPU6050 초기화
    */
-  mpu_init_status = mpu6050_init();
+  mpu_init_status = mpu6050_initialize_with_retry();
 
   /*
    * MPU6050 상태 확인
    */
   mpu_driver_status = mpu6050_get_status();
+
+  if (!mpu_init_status) {
+    printf("[MPU6050] Init failed: status=%d i2c=0x%08lX reg=0x%02X\r\n",
+           (int)mpu_driver_status, (unsigned long)mpu6050_get_last_i2c_error(),
+           mpu6050_get_failed_register());
+  }
 
   /*
    * 진동 처리 모듈 초기화
@@ -317,7 +338,7 @@ void apInit(void) {
     printf("Start Detecting Sound Signals\r\n");
   } else {
     printf("Failed to start Sound ADC\r\n");
-   }
+  }
 }
 
 /*
@@ -357,42 +378,42 @@ void apMain(void) {
      *
      * 단위 : ms
      */
-     if(vibration_state_data.current_state==VIBRATION_STATE_DANGER){
+    if (vibration_state_data.current_state == VIBRATION_STATE_DANGER) {
       relay_off();
-     }
+    }
     current_tick = HAL_GetTick();
     /*
      * DMA 콜백이 100ms마다 준비한 구간을 즉시 처리한다.
      */
-     if(current_tick-tick_2000>=2000){
-      tick_2000=current_tick;
-      if(bt_rx_state==BT_RX_HEADER){
-        
+    if (current_tick - tick_2000 >= 2000) {
+      tick_2000 = current_tick;
+      if (bt_rx_state == BT_RX_HEADER) {
+
         b_BtTest = bt_sendHeader();
       }
-     }
+    }
 
-     if(current_tick-tick_125>=125){
-      tick_125=current_tick;
-       if (adc_half_ready) {
-         adc_half_ready = false;
-         sound_process_window(&adc_dma_buffer[0]);
-       }
-   
-       if (adc_full_ready) {
-         adc_full_ready = false;
-         sound_process_window(&adc_dma_buffer[ADC_WINDOW_SIZE]);
-       }
-     }
+    if (current_tick - tick_125 >= 125) {
+      tick_125 = current_tick;
+      if (adc_half_ready) {
+        adc_half_ready = false;
+        sound_process_window(&adc_dma_buffer[0]);
+      }
+
+      if (adc_full_ready) {
+        adc_full_ready = false;
+        sound_process_window(&adc_dma_buffer[ADC_WINDOW_SIZE]);
+      }
+    }
 
     /*
      * ====================================================
      * MPU6050 Sampling
      * ====================================================
      *
-     * 약 8ms마다 실행
+     * 약 800ms마다 실행
      *
-     * ≈ 125Hz
+     * ≈ 1.25Hz
      */
 
     if ((current_tick - tick_mpu) >= MPU_READ_PERIOD_MS) {
@@ -412,6 +433,8 @@ void apMain(void) {
 
           mpu_fail_count = 0U;
 
+          mpu_driver_status = MPU6050_STATUS_OK;
+
           /*
            * ==========================================
            * 1.2 진동 데이터 처리
@@ -426,13 +449,13 @@ void apMain(void) {
            * 를 vibration 모듈에 전달한다.
            *
            * 반환값 true는
-           * 64 Sample Window 결과가 새로 만들어졌다는 뜻.
+           * 진동 Window 결과가 새로 만들어졌다는 뜻.
            */
           /*
            * 진동 데이터 처리.
            *
            * true:
-           * 새로운 64 Sample Window 결과가 만들어짐
+           * 새로운 진동 Window 결과가 만들어짐
            *
            * false:
            * 아직 Window 수집 중
@@ -454,10 +477,27 @@ void apMain(void) {
            * 상태 판정을 한 번 실행한다.
            */
           if (vibration_updated) {
+            vibration_state_t previous_vibration_state =
+                vibration_state_data.current_state;
+
             vibration_state_changed =
                 vibration_state_update(vibration_data.vibration_value);
 
             vibration_state_get_data(&vibration_state_data);
+
+            if (vibration_state_changed) {
+              printf(
+                  "[VIBRATION STATE] %s -> %s (RMS=%.5f g)\r\n",
+                  vibration_state_get_name(previous_vibration_state),
+                  vibration_state_get_name(vibration_state_data.current_state),
+                  vibration_state_data.vibration_value);
+
+              if (vibration_state_data.current_state ==
+                  VIBRATION_STATE_DANGER) {
+                relay_off();
+                printf("[RELAY] OFF: vibration DANGER\r\n");
+              }
+            }
           }
         }
 
@@ -474,8 +514,10 @@ void apMain(void) {
           /*
            * 3회 연속 실패
            */
-          if (mpu_fail_count >= 3U) {
-            // mpu_init_status = false;
+          if (mpu_fail_count >= MPU_MAX_CONSECUTIVE_FAILURES) {
+            mpu_init_status = false;
+
+            mpu_read_status = false;
 
             mpu_fail_count = 0U;
 
@@ -491,24 +533,26 @@ void apMain(void) {
      * ====================================================
      */
     if (!mpu_init_status) {
-      if ((current_tick - tick_reinit) >= 1000U) {
+      if ((current_tick - tick_reinit) >= MPU_REINIT_PERIOD_MS) {
         tick_reinit = current_tick;
 
-        // mpu_init_status = mpu6050_reinit();
+        mpu_init_status = mpu6050_reinit();
 
-        // mpu_driver_status = mpu6050_get_status();
+        mpu_driver_status = mpu6050_get_status();
 
-        // if (mpu_init_status) {
-        //   mpu_read_status = false;
+        if (mpu_init_status) {
+          mpu_read_status = false;
 
-        //   mpu_fail_count = 0U;
+          mpu_fail_count = 0U;
 
-        //   /*
-        //    * 센서가 재초기화됐으므로
-        //    * 기존 진동 Filter 기준값도 다시 초기화한다.
-        //    */
-        //   vibration_init();
-        // }
+          tick_mpu = current_tick;
+
+          /* 같은 loop에서 read=false를 오류로 출력하지 않도록 한다. */
+          tick_debug = current_tick;
+
+          /* 센서 Reset 후에는 기존 진동 기준값도 다시 설정한다. */
+          vibration_init();
+        }
       }
     }
 
@@ -517,7 +561,7 @@ void apMain(void) {
      * Debug Print
      * ====================================================
      *
-     * Sensor Sampling은 8ms이지만
+     * Sensor Read는 800ms마다 실행하지만
      * UART Print는 1초마다 실행한다.
      */
     if ((current_tick - tick_debug) >= DEBUG_PRINT_PERIOD_MS) {
@@ -527,7 +571,7 @@ void apMain(void) {
         /*
          * MPU6050 원본 가속도
          */
-        
+
         /*
          * 진동 처리 결과
          *
@@ -544,8 +588,13 @@ void apMain(void) {
                vibration_state_get_name(vibration_state_data.current_state));
       }
 
-      else if (!mpu_init_status) {
-        printf("[MPU6050] Error Status : %d\r\n", (int)mpu_driver_status);
+      else {
+        printf("[MPU6050] Error: status=%d init=%u read=%u count=%lu "
+               "i2c=0x%08lX reg=0x%02X\r\n",
+               (int)mpu_driver_status, mpu_init_status ? 1U : 0U,
+               mpu_read_status ? 1U : 0U, (unsigned long)mpu_error_count,
+               (unsigned long)mpu6050_get_last_i2c_error(),
+               mpu6050_get_failed_register());
       }
     }
   }

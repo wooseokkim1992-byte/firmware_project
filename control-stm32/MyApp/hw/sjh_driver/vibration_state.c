@@ -37,18 +37,12 @@ static vibration_state_t vibration_state_determine(float vibration_value) {
    */
   if (state_data.current_state == VIBRATION_STATE_NORMAL) {
     /*
-     * WARNING 기준 이상.
+     * 한 번의 Update에서는 한 단계만 이동한다.
+     * DANGER 기준을 넘는 큰 진동이어도 먼저 WARNING으로 진입하고,
+     * 다음 Update에서 계속 큰 진동이 감지되면 DANGER로 진입한다.
      */
     if (vibration_value >= state_config.warning_threshold) {
       return VIBRATION_STATE_WARNING;
-    }
-    /*
-     * DANGER 기준 이상이면
-     * WARNING을 거치지 않고
-     * 바로 DANGER 후보로 판단한다.
-     */
-    if (vibration_value >= state_config.danger_threshold) {
-      return VIBRATION_STATE_DANGER;
     }
 
     return VIBRATION_STATE_NORMAL;
@@ -232,7 +226,7 @@ bool vibration_state_update(float vibration_value) {
   /*
    * Update 횟수 증가.
    */
-  // state_data.update_count++;
+  state_data.update_count++;
 
   /*
    * Threshold 설정 전에는

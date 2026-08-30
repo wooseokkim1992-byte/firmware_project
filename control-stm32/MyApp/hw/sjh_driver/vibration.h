@@ -42,7 +42,7 @@
  *
  *              ↓
  *
- * 64 Sample Window
+ * Sample Window
  *
  *              ↓
  *
@@ -64,24 +64,24 @@
  * Window Size
  * ============================================================
  *
- * MPU6050 Sample Rate = 125 Hz
+ * 현재 Application Sampling 주기 = 800ms (약 1.25Hz)
  *
- * 64 Sample을 사용하면
+ * 현재 Application의 800ms Sampling에서 4 Sample을 사용하면
  *
- * 64 / 125
+ * 4 * 0.8초
  *
- * ≈ 0.512초
+ * ≈ 3.2초
  *
- * 즉 약 0.5초 구간의 진동 데이터를 이용하여
+ * 즉 약 3.2초 구간의 진동 데이터를 이용하여
  * RMS / Peak를 계산한다.
  *
  * 너무 짧으면 순간 노이즈 영향을 많이 받고,
  * 너무 길면 상태 변화 반응이 느려진다.
  *
- * 현재 64 Sample은 초기 테스트용 값이며
+ * 현재 4 Sample은 상태 전이 테스트용 값이며
  * 실제 회전체 측정 후 변경할 수 있다.
  */
-#define VIBRATION_WINDOW_SIZE            64U
+#define VIBRATION_WINDOW_SIZE            4U
 
 
 /*
@@ -185,7 +185,7 @@ typedef struct
      * Window 평균 진동
      * --------------------------------------------------------
      *
-     * 64개 Sample의 진동 크기 평균.
+     * Window 내 Sample의 진동 크기 평균.
      */
     float vibration_mean;
 
@@ -210,7 +210,7 @@ typedef struct
      * Peak
      * --------------------------------------------------------
      *
-     * 64개 Sample 중 가장 큰 순간 진동값.
+     * Window 내 Sample 중 가장 큰 순간 진동값.
      *
      * 충격이나 순간적으로 큰 흔들림을 확인할 때 유용하다.
      */
@@ -275,7 +275,7 @@ typedef struct
      * 현재 Window에 들어간 Sample 개수.
      *
      * 0 → 63까지 증가하다가
-     * 64개 계산 완료 후 다시 0부터 시작한다.
+     * Window 계산 완료 후 다시 0부터 시작한다.
      */
     uint16_t sample_count;
 
@@ -313,7 +313,7 @@ void vibration_init(void);
  * 반환값
  *
  * true
- * → 64 Sample이 모여 새로운 RMS / Peak 결과가 만들어짐
+ * → Window Sample이 모여 새로운 RMS / Peak 결과가 만들어짐
  *
  * false
  * → 아직 Window를 수집 중
