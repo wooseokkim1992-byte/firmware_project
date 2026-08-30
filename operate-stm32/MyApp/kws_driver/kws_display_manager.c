@@ -106,14 +106,14 @@ void update_lcd1602(void) {
 
   const char *state_text = "UNKNOWN";
   if (lcd_mode == VIBE_MODE) {
-    if (lcd_display_data.vibe_state == NORMAL) {
+    if (!lcd_display_data.mpu6050_ok || !lcd_display_data.relay_on) {
+      state_text = "E-STOP";
+    } else if (lcd_display_data.vibe_state == NORMAL) {
       state_text = "NORMAL";
     } else if (lcd_display_data.vibe_state == WARNING) {
       state_text = "WARN";
     } else if (lcd_display_data.vibe_state == DANGER) {
       state_text = "DANGER";
-    } else if (!lcd_display_data.mpu6050_ok || !lcd_display_data.relay_on) {
-      state_text = "E-STOP";
     }
     (void)snprintf(line1, sizeof(line1), "VIBERATION:%s", state_text);
     (void)snprintf(line2, sizeof(line2), "MR:%s R:%s MPU:%s",
