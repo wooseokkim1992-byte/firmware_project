@@ -34,6 +34,20 @@
 | 장애 복구 | MPU 초기화 재시도, 연속 읽기 실패 감지, I2C 재초기화와 진동 기준 재설정 |
 | 관제 UI | OLED·LCD·RGB LED를 서로 다른 주기로 갱신해 상태와 센서 값을 표현 |
 
+### 하드웨어 프로토타입 및 E-STOP 시연
+
+<p align="center">
+  <a href="./resource/kill-sw.mp4">
+    <img src="./resource/img.png" width="600" alt="Control STM32와 Operate STM32로 구성한 회전체 상태 모니터링 시스템 프로토타입">
+  </a>
+</p>
+
+<p align="center">
+  Control·Operate 노드 통합 프로토타입 — 이미지를 클릭하면 원격 Kill Switch 동작 영상을 확인할 수 있다.
+</p>
+
+▶️ **[원격 E-STOP 및 Relay 차단 시연 영상 보기](./resource/kill-sw.mp4)**
+
 ## 2. 시스템 아키텍처
 
 ```mermaid
